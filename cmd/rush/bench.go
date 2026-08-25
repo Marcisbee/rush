@@ -54,7 +54,7 @@ func runBenchmarks(args []string, output io.Writer) error {
 		coldSamples = append(coldSamples, response.StartupMS)
 	}
 	coldMedian := median(coldSamples)
-	results = append(results, benchmarkResult{Name: "cold startup", Metric: "daemon-to-page-ready", TargetMS: 2000, SamplesMS: coldSamples, MedianMS: coldMedian, Passed: coldMedian < 2000, Measurement: "native process start through WebKitGTK bridge readiness; excludes build and user test time"})
+	results = append(results, benchmarkResult{Name: "cold startup", Metric: "daemon-to-page-ready", TargetMS: 2000, SamplesMS: coldSamples, MedianMS: coldMedian, Passed: coldMedian < 2000, Measurement: "native process start through " + rush.BackendName() + " bridge readiness; excludes build and user test time"})
 
 	scenarios := []struct {
 		name, file, metric string

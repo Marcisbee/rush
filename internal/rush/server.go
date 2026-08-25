@@ -31,14 +31,12 @@ type Server struct {
 
 func RunDaemon(socket string, headed bool, ready *os.File) error {
 	started := time.Now()
-	if !headed {
-		stopDisplay, err := startVirtualDisplay()
-		if err != nil {
-			writeReady(ready, err)
-			return err
-		}
-		defer stopDisplay()
+	stopDisplay, err := prepareBrowser(headed)
+	if err != nil {
+		writeReady(ready, err)
+		return err
 	}
+	defer stopDisplay()
 	if err := os.MkdirAll(filepath.Dir(socket), 0700); err != nil {
 		writeReady(ready, err)
 		return err
@@ -81,7 +79,7 @@ func RunDaemon(socket string, headed bool, ready *os.File) error {
 				go server.handle(connection)
 			}
 		case <-time.After(15 * time.Second):
-			writeReady(ready, errors.New("WebKitGTK page did not become ready within 15s"))
+			writeReady(ready, fmt.Errorf("%s page did not become ready within 15s", BackendName()))
 			browser.Stop()
 		}
 	}()

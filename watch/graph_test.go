@@ -2,6 +2,7 @@ package watch
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -54,4 +55,31 @@ func TestUpdateRemovesStaleImportEdges(t *testing.T) {
 	if got, want := graph.Affected("new.ts"), []string{"card.test.ts"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("Affected() = %#v, want %#v", got, want)
 	}
+}
+
+func BenchmarkAffected(b *testing.B) {
+	graph := New()
+	for index := 0; index < 10_000; index++ {
+		suite := fmt.Sprintf("tests/%05d.test.ts", index)
+		module := fmt.Sprintf("src/%05d.ts", index)
+		graph.Suite(suite)
+		graph.Add(suite, module, "src/shared.ts")
+	}
+
+	b.Run("one of 10000 suites", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			if affected := graph.Affected("src/00042.ts"); len(affected) != 1 {
+				b.Fatalf("affected suites = %d", len(affected))
+			}
+		}
+	})
+	b.Run("all 10000 suites", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			if affected := graph.Affected("src/shared.ts"); len(affected) != 10_000 {
+				b.Fatalf("affected suites = %d", len(affected))
+			}
+		}
+	})
 }
