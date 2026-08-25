@@ -1,0 +1,10 @@
+{
+  "name": "rush-benchmark-fixtures",
+  "private": true,
+  "scripts": {
+    "bench": "./bin/rush bench"
+  },
+  "devDependencies": {
+    "preact": "^10.27.1"
+  }
+}
