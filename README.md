@@ -4,7 +4,17 @@ Rush is a persistent WebView-native JavaScript and TypeScript test runner. This 
 
 The repository is under active development. The `@rush/browser` package contains the public, Vitest-compatible API that executes inside a real browser page. Native hosts provide navigation, isolated sessions, and trusted input through explicit adapters; ordinary assertions, queries, mocks, timers, snapshots, and synthetic interactions stay in the page.
 
-## macOS WKWebView adapter
+## Native adapters
+
+### Windows WebView2
+
+The Windows adapter is implemented in `platform/webview2`. It keeps WebView2 controllers warm, leases reusable browser realms from a bounded pool, batches page bridge messages, captures rendered PNG and DOM failure artifacts, and exposes trusted Windows mouse and keyboard automation separately from fast synthetic page events.
+
+Normal Windows runs use a hidden, off-screen host window. Debug mode shows the host and opens WebView2 DevTools. See [Windows WebView2 setup and validation](docs/windows-webview2.md).
+
+The adapter-independent browser conformance and warm performance workloads live in `harness`, so other native adapters can run the same checks.
+
+### macOS WKWebView
 
 `RushWKWebViewAdapter` hosts a reusable pool of real `WKWebView` realms. Normal runs leave the views unattached to a window. Debug runs attach each realm to a visible window and mark it inspectable, so it appears in Safari's Develop menu on macOS 13.3 and newer.
 
@@ -19,7 +29,7 @@ The checked-in Go dependency embeds the small native WebView adapter, but the op
 Debian or Ubuntu:
 
 ```sh
-sudo apt-get install libwebkit2gtk-4.1-0 libgtk-3-0 xvfb xauth
+sudo apt-get install libwebkit2gtk-4.1-0 libgtk-3-0 libxtst6 xvfb xauth
 ```
 
 Ubuntu releases using the 64-bit time ABI may name GTK's runtime package `libgtk-3-0t64`; installing `libwebkit2gtk-4.1-0` normally resolves the right GTK package automatically.
@@ -27,7 +37,7 @@ Ubuntu releases using the 64-bit time ABI may name GTK's runtime package `libgtk
 Fedora:
 
 ```sh
-sudo dnf install webkit2gtk4.1 gtk3 xorg-x11-server-Xvfb xorg-x11-xauth
+sudo dnf install webkit2gtk4.1 gtk3 libXtst xorg-x11-server-Xvfb xorg-x11-xauth
 ```
 
 Build and install the fixture dependency:
@@ -66,15 +76,43 @@ The WPE binary is deliberately headless-only. Use the default WebKitGTK build fo
 
 Headless mode launches an authenticated Xvfb display and keeps it alive with the daemon. Headed mode requires an existing `DISPLAY` or `WAYLAND_DISPLAY`, uses a separate warm daemon, and enables the WebView debug flag. The daemon and its esbuild contexts remain warm across later invocations until `rush stop` is called.
 
-Each suite is bundled independently with `@rush/browser` and must import the APIs it uses. The WebKit harness executes the package's shared registry and maps its batched results onto the native protocol. Assertions, Testing Library queries, mocks, spies, fake timers, snapshots, and synthetic interactions therefore run in the real browser page instead of a duplicate embedded test implementation.
+Headless runs keep up to three independent WebView realms warm by default, bounded by the Go process's available parallelism. `RUSH_WEBVIEW_POOL_SIZE` can select from one through four realms; the headed default is one so debugging does not open a bank of windows. The fixed realm bound and each realm's 64-factory cache cap prevent suite count from creating an unbounded number of WebViews or retained compiled bundles.
+
+Each suite remains an independent IIFE with its own module graph and must import the APIs it uses. Rush traverses all requested suites in one esbuild batch, validates the complete recorded input graph before reusing unchanged output, and assigns files deterministically across the bounded realm pool. Each realm receives one batched bridge call, caches compiled factories by content hash, invokes a fresh factory, and performs a full browser reset for every file. Assertions, Testing Library queries, mocks, spies, fake timers, snapshots, and synthetic interactions therefore run concurrently in real browser pages without sharing application module state between files.
 
 Automatic JSX uses React when the project declares React, Preact when it declares only Preact, and React otherwise. `RUSH_JSX_IMPORT_SOURCE` provides an explicit override. Bundles run with `process.env.NODE_ENV` set to `test` by default so framework testing APIs remain available; `RUSH_NODE_ENV` can override it.
 
 The runner supplies `@rush/browser` to external absolute suites from the project's installed dependency, its own adjacent `dist` directory, or `RUSH_BROWSER_MODULE` for custom package layouts. Consumer repositories do not need a temporary local package link when using a built Rush binary.
 
-Before the next suite, Rush clears the DOM, style nodes, timers, animation frames, registered event listeners, cookies, local and session storage, performance entries, and bundle globals. Bundle scoping supplies a fresh registry and mock runtime for every file. Rush does not yet provide a separate WebView realm per browser test file, service-worker cleanup, native input, or network interception.
+Before the next suite assigned to a realm, Rush clears the DOM, style nodes, timers, animation frames, registered event listeners, cookies, local and session storage, IndexedDB databases, Cache Storage, service-worker registrations, performance entries, and bundle globals. Bundle scoping supplies a fresh registry and mock runtime for every file. Rush does not allocate a dedicated WebView for every file.
 
 Session tests use `test.session({clients: ["alice", "bob"]})`. The Linux adapter assigns each named client a persistent worker from a bounded four-WebView pool. Each worker has a separate WebKit profile, so clients navigating to the same realtime application do not share cookies, local storage, or session storage. `client.goto(url)` performs lifecycle navigation and `client.evaluate(callback)` sends one coarse callback to execute entirely inside that client's page; DOM and application operations inside the callback do not cross the host bridge. Clients can evaluate concurrently with `Promise.all`, and disposal scrubs visible browser state before returning a worker to the pool.
+
+## Application automation
+
+`test.app` creates a fresh application iframe for each test while the controller document and native bridge stay alive. `goto` performs a real WebKit document navigation through Rush's loopback application proxy. The proxy keeps the application document same-origin with the controller so Testing Library locators and fast synthetic interactions continue to run in-page. Absolute and relative HTTP requests are forwarded to the requested application origin.
+
+```ts
+import {expect, native, test} from "@rush/browser"
+
+test.app("signs in", async ({goto, network, page}) => {
+  network.route("**/api/session", route => route.fulfill({
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({user: "Ada"}),
+  }))
+  const request = network.waitForRequest("**/api/session")
+
+  await goto("http://127.0.0.1:3000/sign-in")
+  await native.type(page.getByRole("textbox", {name: "Email"}), "ada@example.test")
+  page.getByRole("button", {name: "Continue"}).click()
+
+  expect((await request).method).toBe("POST")
+})
+```
+
+`network.route` accepts exact URLs, glob strings, regular expressions, or request predicates. A handler can fulfill with a mocked response, continue with request overrides, or abort. `network.requests` and `network.waitForRequest` expose immutable request records for inspection. Routes and records belong to one app test and are discarded with its realm.
+
+Locator `click`, `fill`, `type`, and `press` remain fast synthetic DOM interactions. `native.click`, `native.type`, and `native.press` are the explicit trusted-input path. The Linux adapter sends those events through XTest on the daemon's authenticated X11 display; it never falls back to synthetic events. Application proxy time is attributed to `network`, completed timer delays to `intentional wait`, callback work after those deductions to `application`, and orchestration outside callbacks to `runner`.
 
 ## Timing model
 
@@ -86,6 +124,8 @@ Normal and JSON output report these measurements separately:
 - `network`: WebKit resource timing durations observed during the suite.
 - `intentional wait`: requested delays for timers that fired while a test was executing.
 - `page total`: registration plus test execution inside WebKit.
+
+JSON output also includes a request-level `profile`: `browser_realms` is the fixed pool size, `bundle` is the actual esbuild rebuild, `native_host` is Go orchestration outside the build and browser round trip, `bridge` is native dispatch and result transfer, `browser_execution` is the longest concurrent in-page realm batch, `test_execution` is the sum of the individual suite totals, `reset` is browser cleanup between files, and `reporting` is the longest browser-side result serialization. CLI process overhead is the caller-observed process wall time minus `wall_ms`.
 
 Network requests and timers can overlap, so the phase values are attribution signals rather than an accounting identity. Host build time is never folded into page time.
 
@@ -113,7 +153,7 @@ All raw samples, phase medians, measurement definitions, targets, and pass/fail 
 
 ## Architecture
 
-The CLI connects to a mode-specific Unix socket under the user's cache directory. If needed, it starts the Go daemon and waits on a dedicated readiness pipe. The daemon owns one WebKitGTK event loop and a cache of esbuild `BuildContext` instances keyed by absolute suite path. Requests are serialized through the page, results cross the native bridge once per suite, and a per-suite timeout bounds a hung page.
+The CLI connects to an executable- and mode-specific Unix socket under the user's cache directory. Scoping by executable path prevents another checkout or incompatible build from silently answering a run. If needed, the CLI starts the Go daemon and waits on a dedicated readiness pipe. The daemon owns one WebKitGTK event loop, a bounded pool of independent WebViews, and esbuild `BuildContext` instances cached by ordered suite set and build configuration. Requests are serialized at the daemon boundary; independently compiled files execute concurrently across stable realm assignments and sequentially within each realm, with a full reset between files.
 
 The Unix socket and log are user-only. Xvfb normally uses its local Unix socket. In read-only WSL/container environments where `/tmp/.X11-unix` lacks the required sticky bit, Rush falls back to a loopback TCP display protected by a generated Xauthority cookie.
 

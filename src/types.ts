@@ -16,8 +16,46 @@ export interface AppContext {
   window: Window;
   document: Document;
   page: Locator;
+  network: AppNetwork;
   url(): string;
   goto(url: string): Promise<void>;
+}
+
+export interface AppRequest {
+  readonly id: string;
+  readonly url: string;
+  readonly method: string;
+  readonly headers: Readonly<Record<string, string>>;
+  readonly body?: string;
+}
+
+export interface AppResponse {
+  status?: number;
+  headers?: Readonly<Record<string, string>>;
+  body?: string;
+}
+
+export interface AppRequestOverrides {
+  url?: string;
+  method?: string;
+  headers?: Readonly<Record<string, string>>;
+  body?: string;
+}
+
+export interface AppRoute {
+  readonly request: AppRequest;
+  fulfill(response?: AppResponse): void;
+  continue(overrides?: AppRequestOverrides): void;
+  abort(reason?: string): void;
+}
+
+export type AppRequestPattern = string | RegExp | ((request: AppRequest) => boolean);
+export type AppRouteHandler = (route: AppRoute) => Awaitable<void>;
+
+export interface AppNetwork {
+  route(pattern: AppRequestPattern, handler: AppRouteHandler): () => void;
+  requests(pattern?: AppRequestPattern): readonly AppRequest[];
+  waitForRequest(pattern: AppRequestPattern, options?: { timeout?: number }): Promise<AppRequest>;
 }
 
 export interface SessionClient {
@@ -58,7 +96,19 @@ export interface SessionRealm {
   dispose?(): Awaitable<void>;
 }
 
+export interface AppRealm {
+  window(): Window;
+  document(): Document;
+  url(): string;
+  goto(url: string): Promise<void>;
+  network: AppNetwork;
+  native?: NativeAutomation;
+  dispose?(): Awaitable<void>;
+}
+
 export interface RuntimeAdapter {
+  createApp?(): Awaitable<AppRealm>;
+  /** @deprecated Use createApp so every test receives an isolated application realm. */
   navigate?(url: string): Promise<void>;
   native?: NativeAutomation;
   createSession?(names: readonly string[]): Promise<readonly SessionRealm[]>;

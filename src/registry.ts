@@ -275,11 +275,29 @@ function makeBrowserContext(): BrowserContext {
 async function createContext(definition: TestDefinition): Promise<TestContext> {
   if (definition.model === "browser") return makeBrowserContext();
   if (definition.model === "app") {
+    if (runtimeAdapter.createApp) {
+      const realm = await runtimeAdapter.createApp();
+      const context = {
+        model: "app",
+        page: createPage(realm.document),
+        network: realm.network,
+        url: realm.url,
+        goto: realm.goto,
+        __dispose: realm.dispose,
+      } as AppContext & { __dispose?: () => Awaitable<void> };
+      Object.defineProperties(context, {
+        window: { enumerable: true, get: realm.window },
+        document: { enumerable: true, get: realm.document },
+      });
+      if (realm.native) setNativeAutomation(realm.native);
+      return context;
+    }
     const context: AppContext = {
       model: "app",
       window,
       document,
       page: createPage(document),
+      network: unavailableAppNetwork(),
       url: () => window.location.href,
       goto: async (url) => {
         if (!runtimeAdapter.navigate) throw new Error("App navigation requires a RuntimeAdapter.navigate implementation");
@@ -317,10 +335,24 @@ async function createContext(definition: TestDefinition): Promise<TestContext> {
 }
 
 async function disposeContext(context: TestContext): Promise<void> {
+  if (context.model === "app") {
+    await (context as AppContext & { __dispose?: () => Awaitable<void> }).__dispose?.();
+    setNativeAutomation(runtimeAdapter.native);
+    return;
+  }
   if (context.model !== "session") return;
   for (const client of context.clients as Array<(typeof context.clients)[number] & { __dispose?: () => Awaitable<void> }>) {
     await client.__dispose?.();
   }
+}
+
+function unavailableAppNetwork(): AppContext["network"] {
+  const unavailable = () => { throw new Error("Request interception requires a RuntimeAdapter.createApp implementation"); };
+  return {
+    route: unavailable,
+    requests: unavailable,
+    waitForRequest: unavailable,
+  };
 }
 
 function serializeError(error: unknown): SerializedError {

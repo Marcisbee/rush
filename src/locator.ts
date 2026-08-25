@@ -109,18 +109,18 @@ export class Locator {
 
   isVisible(): boolean {
     const element = this.element();
-    return element instanceof HTMLElement && !element.hidden && element.style.display !== "none" && element.style.visibility !== "hidden";
+    return isHTMLElement(element) && !element.hidden && element.style.display !== "none" && element.style.visibility !== "hidden";
   }
 
   focus(): void {
     const element = this.element();
-    if (!(element instanceof HTMLElement)) throw new Error(`${this.description} is not focusable`);
+    if (!isHTMLElement(element)) throw new Error(`${this.description} is not focusable`);
     element.focus();
   }
 
   click(): void {
     const element = this.element();
-    if (!(element instanceof HTMLElement)) throw new Error(`${this.description} is not clickable`);
+    if (!isHTMLElement(element)) throw new Error(`${this.description} is not clickable`);
     if ("disabled" in element && element.disabled) return;
     fireEvent.pointerDown(element, { pointerType: "mouse", button: 0 });
     fireEvent.mouseDown(element, { button: 0 });
@@ -146,14 +146,14 @@ export class Locator {
 
   type(text: string): void {
     const element = this.element();
-    if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLElement && element.isContentEditable)) {
+    if (!(isInput(element) || isTextArea(element) || isHTMLElement(element) && element.isContentEditable)) {
       throw new Error(`${this.description} does not accept text input`);
     }
     element.focus();
     for (const character of text) {
       fireEvent.keyDown(element, { key: character });
       fireEvent.keyPress(element, { key: character });
-      if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+      if (isInput(element) || isTextArea(element)) {
         setFormValue(element, element.value + character);
       } else {
         element.textContent = (element.textContent ?? "") + character;
@@ -171,19 +171,19 @@ export class Locator {
 
   check(): void {
     const element = this.element();
-    if (!(element instanceof HTMLInputElement) || !["checkbox", "radio"].includes(element.type)) throw new Error(`${this.description} is not a checkbox or radio`);
+    if (!isInput(element) || !["checkbox", "radio"].includes(element.type)) throw new Error(`${this.description} is not a checkbox or radio`);
     if (!element.checked) element.click();
   }
 
   uncheck(): void {
     const element = this.element();
-    if (!(element instanceof HTMLInputElement) || element.type !== "checkbox") throw new Error(`${this.description} is not a checkbox`);
+    if (!isInput(element) || element.type !== "checkbox") throw new Error(`${this.description} is not a checkbox`);
     if (element.checked) element.click();
   }
 
   selectOptions(values: string | readonly string[]): void {
     const element = this.element();
-    if (!(element instanceof HTMLSelectElement)) throw new Error(`${this.description} is not a select`);
+    if (!isSelect(element)) throw new Error(`${this.description} is not a select`);
     const selected = new Set(Array.isArray(values) ? values : [values]);
     for (const option of element.options) option.selected = selected.has(option.value);
     fireEvent.input(element);
@@ -208,19 +208,36 @@ export class Locator {
 }
 
 function setFormValue(element: Element, value: string): void {
-  if (element instanceof HTMLInputElement) {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(element, value);
+  const realm = element.ownerDocument.defaultView;
+  if (isInput(element)) {
+    Object.getOwnPropertyDescriptor(realm?.HTMLInputElement.prototype ?? HTMLInputElement.prototype, "value")?.set?.call(element, value);
     return;
   }
-  if (element instanceof HTMLTextAreaElement) {
-    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(element, value);
+  if (isTextArea(element)) {
+    Object.getOwnPropertyDescriptor(realm?.HTMLTextAreaElement.prototype ?? HTMLTextAreaElement.prototype, "value")?.set?.call(element, value);
     return;
   }
-  if (element instanceof HTMLElement && element.isContentEditable) {
+  if (isHTMLElement(element) && element.isContentEditable) {
     element.textContent = value;
     return;
   }
   throw new Error("Element does not accept a value");
+}
+
+function isHTMLElement(element: Element): element is HTMLElement {
+  return typeof (element as HTMLElement).focus === "function" && "style" in element;
+}
+
+function isInput(element: Element): element is HTMLInputElement {
+  return element.localName === "input";
+}
+
+function isTextArea(element: Element): element is HTMLTextAreaElement {
+  return element.localName === "textarea";
+}
+
+function isSelect(element: Element): element is HTMLSelectElement {
+  return element.localName === "select";
 }
 
 function requireNative(): NativeAutomation {
@@ -230,10 +247,14 @@ function requireNative(): NativeAutomation {
   return nativeAutomation;
 }
 
-export function createPage(root: ParentNode = document): Locator {
+export function createPage(root: ParentNode | (() => ParentNode) = document): Locator {
   return new Locator(() => {
-    if (root instanceof Document) return root.documentElement ? [root.documentElement] : [];
-    if (root instanceof Element) return [root];
+    const resolved = typeof root === "function" ? root() : root;
+    if (resolved.nodeType === Node.DOCUMENT_NODE) {
+      const testDocument = resolved as Document;
+      return testDocument.documentElement ? [testDocument.documentElement] : [];
+    }
+    if (resolved.nodeType === Node.ELEMENT_NODE) return [resolved as Element];
     return [];
   }, "page");
 }
