@@ -82,3 +82,25 @@ func TestDetectJSXImportSourceOverride(t *testing.T) {
 		t.Fatalf("detected %q, want solid-js", got)
 	}
 }
+
+func TestBuilderResolvesBrowserModuleForExternalSuite(t *testing.T) {
+	rushRoot, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("RUSH_BROWSER_MODULE", filepath.Join(rushRoot, "dist", "index.js"))
+	externalRoot := t.TempDir()
+	suite := filepath.Join(externalRoot, "external.test.ts")
+	if err := os.WriteFile(suite, []byte("import { expect, test } from '@rush/browser'; test('external', () => expect(1).toBe(1))"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	builder := NewBuilder()
+	defer builder.Close()
+	bundle, _, err := builder.Build(externalRoot, suite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(bundle, "external") {
+		t.Fatal("external suite was not included in bundle")
+	}
+}
