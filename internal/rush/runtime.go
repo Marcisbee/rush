@@ -161,7 +161,7 @@ const runtimeHTML = `<!doctype html>
       const point = element ? await elementPoint(element) : {};
       await window.__rushNativeInput(JSON.stringify({action, ...point, ...extra}));
     };
-    const observe = async (element, type, count, action, message, timeout = 1000) => {
+    const observe = async (element, type, count, action, message, timeout = 5000) => {
       if (count === 0) return action();
       let cleanup = () => {};
       const received = new Promise((resolve, reject) => {
@@ -191,7 +191,7 @@ const runtimeHTML = `<!doctype html>
     };
     return {
       click: element => observe(element, "click", 1, () => send("click", element), "Trusted native click did not reach its target"),
-      type: (element, text) => observe(element, "keyup", [...text].length, () => send("type", element, {text}), "Trusted native typing did not reach its target", Math.max(1000, [...text].length * 50)),
+      type: (element, text) => observe(element, "keyup", [...text].length, () => send("type", element, {text}), "Trusted native typing did not reach its target", Math.max(5000, [...text].length * 250)),
       press: (key, element) => send("press", element, {key}),
     };
   }
