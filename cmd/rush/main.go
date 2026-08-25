@@ -45,7 +45,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 func runTests(args []string, stdout, stderr io.Writer) error {
 	set := flag.NewFlagSet("test", flag.ContinueOnError)
 	set.SetOutput(stderr)
-	headed := set.Bool("headed", false, "show WebKitGTK with inspector support")
+	headedHelp := "show " + rush.BackendName() + " with inspector support"
+	if !rush.SupportsHeaded() {
+		headedHelp = "unsupported by the WPE headless adapter"
+	}
+	headed := set.Bool("headed", false, headedHelp)
 	jsonOutput := set.Bool("json", false, "write a machine-readable response")
 	timeout := set.Duration("timeout", 30*time.Second, "timeout for each suite")
 	if err := set.Parse(args); err != nil {
@@ -163,16 +167,7 @@ func stop(args []string) error {
 }
 
 func doctor(output io.Writer) error {
-	if _, err := os.Stat("/usr/bin/Xvfb"); err != nil {
-		return errors.New("Xvfb was not found; on Debian/Ubuntu install xvfb")
-	}
-	if _, err := os.Stat("/usr/bin/xauth"); err != nil {
-		return errors.New("xauth was not found; on Debian/Ubuntu install xauth")
-	}
-	fmt.Fprintln(output, "Go host: available")
-	fmt.Fprintln(output, "headless display: Xvfb and xauth available")
-	fmt.Fprintln(output, "WebKitGTK: checked when the native daemon starts (run `rush test benchmarks/fixtures/assertions.ts`)")
-	return nil
+	return rush.Doctor(output)
 }
 
 func failedTests(response rush.Response) int {
