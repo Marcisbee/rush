@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"encoding/xml"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -101,5 +102,38 @@ func TestWriteAllRoutesConfiguredOutputFiles(t *testing.T) {
 	}
 	if !bytes.Contains(data, []byte("<testsuites")) {
 		t.Fatalf("junit = %q", data)
+	}
+}
+
+func BenchmarkReporters10000Tests(b *testing.B) {
+	tests := make([]result.Test, 10_000)
+	for index := range tests {
+		status := result.Passed
+		if index%10 == 0 {
+			status = result.Failed
+		}
+		tests[index] = result.Test{
+			Suite:    "large.test.ts",
+			Name:     "renders a result",
+			Status:   status,
+			Duration: time.Millisecond,
+			Error:    "expected result to match",
+		}
+	}
+	summary := result.Summary{Tests: tests, Timing: result.Timing{User: 10 * time.Second}}
+
+	for _, name := range []string{"terminal", "junit", "tap", "json", "github"} {
+		instance, err := New(name)
+		if err != nil {
+			b.Fatal(err)
+		}
+		b.Run(name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				if err := instance.Write(io.Discard, summary); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
