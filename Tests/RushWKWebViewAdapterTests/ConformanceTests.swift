@@ -68,12 +68,10 @@ final class ConformanceTests: XCTestCase {
         let secondRealm = try adapter.realm(for: second)
         XCTAssertEqual(first.realmID, second.realmID)
         XCTAssertGreaterThan(secondRealm.generation, generation)
-        XCTAssertEqual(
-            try await secondRealm.evaluateJavaScript(
-                "document.querySelector('#old') === null && globalThis.leaked === undefined"
-            ) as? Bool,
-            true
-        )
+        let wasReset = try await secondRealm.evaluateJavaScript(
+            "document.querySelector('#old') === null && globalThis.leaked === undefined"
+        ) as? Bool
+        XCTAssertEqual(wasReset, true)
         try await adapter.releaseRealm(second)
     }
 
