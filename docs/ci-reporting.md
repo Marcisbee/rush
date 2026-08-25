@@ -49,7 +49,7 @@ The current Linux CLI does not yet invoke the adapter-independent collector. The
 `.github/workflows/ci.yml` runs on every pull request and push to `main`:
 
 - `Go and browser API` installs pinned Go and Node toolchains, checks TypeScript, runs Vitest API tests, runs all Go tests, and repeats Go tests with the race detector.
-- `Linux WebKitGTK conformance and performance` installs the real WebKitGTK/Xvfb/XTest runtime, builds Rush, runs `doctor`, executes trusted app automation serially before the pooled browser and isolated-session examples, and enforces the built-in benchmark targets.
+- `Linux WebKitGTK conformance and performance` installs the real WebKitGTK/Xvfb runtime, builds Rush, runs `doctor`, executes pooled browser and isolated-session examples, and enforces the built-in benchmark targets. Trusted XTest input remains a separate interactive-desktop validation because hosted runners do not provide reliable keyboard focus.
 - `Windows WebView2 adapter` runs the Windows Go packages and the real WebView2 harness for conformance, warm performance, bridge batching, failure capture, and realm reuse. Trusted `SendInput` remains a separate interactive-desktop validation because hosted runners do not provide reliable keyboard focus.
 - The Linux job uploads raw benchmark JSON for 14 days even when the benchmark command misses a target.
 
