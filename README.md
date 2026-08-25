@@ -53,6 +53,8 @@ Headless mode launches an authenticated Xvfb display and keeps it alive with the
 
 Each suite is bundled independently with `@rush/browser` and must import the APIs it uses. The WebKit harness executes the package's shared registry and maps its batched results onto the native protocol. Assertions, Testing Library queries, mocks, spies, fake timers, snapshots, and synthetic interactions therefore run in the real browser page instead of a duplicate embedded test implementation.
 
+Automatic JSX uses React when the project declares React, Preact when it declares only Preact, and React otherwise. `RUSH_JSX_IMPORT_SOURCE` provides an explicit override. Bundles run with `process.env.NODE_ENV` set to `test` by default so framework testing APIs remain available; `RUSH_NODE_ENV` can override it.
+
 Before the next suite, Rush clears the DOM, style nodes, timers, animation frames, registered event listeners, cookies, local and session storage, performance entries, and bundle globals. Bundle scoping supplies a fresh registry and mock runtime for every file. Rush does not yet provide a separate WebView realm per file, service-worker cleanup, native input, network interception, or app/session navigation in the Linux adapter.
 
 ## Timing model

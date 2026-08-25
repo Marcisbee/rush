@@ -59,3 +59,26 @@ func TestBuilderReportsTypeScriptSyntaxErrors(t *testing.T) {
 		t.Fatal("expected syntax error")
 	}
 }
+
+func TestDetectJSXImportSource(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "package.json"), []byte(`{"dependencies":{"react":"latest"},"devDependencies":{"preact":"latest"}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := detectJSXImportSource(directory); got != "react" {
+		t.Fatalf("detected %q, want react", got)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "package.json"), []byte(`{"devDependencies":{"preact":"latest"}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := detectJSXImportSource(directory); got != "preact" {
+		t.Fatalf("detected %q, want preact", got)
+	}
+}
+
+func TestDetectJSXImportSourceOverride(t *testing.T) {
+	t.Setenv("RUSH_JSX_IMPORT_SOURCE", "solid-js")
+	if got := detectJSXImportSource(t.TempDir()); got != "solid-js" {
+		t.Fatalf("detected %q, want solid-js", got)
+	}
+}
