@@ -96,7 +96,7 @@ public actor BridgeMailbox {
 }
 
 @MainActor
-final class BridgeScriptMessageHandler: NSObject, @preconcurrency WKScriptMessageHandler {
+final class BridgeScriptMessageHandler: NSObject, WKScriptMessageHandler {
     private let mailbox: BridgeMailbox
 
     init(mailbox: BridgeMailbox) {

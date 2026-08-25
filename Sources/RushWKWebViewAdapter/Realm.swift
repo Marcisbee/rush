@@ -46,7 +46,7 @@ public final class WKWebViewRealm {
 }
 
 @MainActor
-final class NavigationObserver: NSObject, @preconcurrency WKNavigationDelegate {
+final class NavigationObserver: NSObject, WKNavigationDelegate {
     private struct Pending {
         let navigation: WKNavigation
         let continuation: CheckedContinuation<Void, Error>
