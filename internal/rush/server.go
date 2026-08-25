@@ -21,7 +21,7 @@ import (
 
 type Server struct {
 	socket  string
-	browser *Browser
+	browser *BrowserPool
 	builder *Builder
 	started time.Time
 	cold    atomic.Bool
@@ -57,7 +57,12 @@ func RunDaemon(socket string, headed bool, ready *os.File) error {
 		return err
 	}
 
-	browser, err := NewBrowser(headed)
+	poolSize, err := configuredBrowserPoolSize(headed, os.Getenv("RUSH_WEBVIEW_POOL_SIZE"))
+	if err != nil {
+		writeReady(ready, err)
+		return err
+	}
+	browser, err := NewBrowserPool(headed, poolSize)
 	if err != nil {
 		writeReady(ready, err)
 		return err
@@ -284,6 +289,7 @@ func (s *Server) run(request Request) Response {
 		Cold:      s.cold.Swap(false),
 		StartupMS: milliseconds(time.Since(s.started)),
 	}
+	response.Profile.BrowserRealms = s.browser.Size()
 	timeout := 30 * time.Second
 	if request.Timeout > 0 {
 		timeout = time.Duration(request.Timeout) * time.Millisecond

@@ -21,6 +21,7 @@ type Timing struct {
 }
 
 type Profile struct {
+	BrowserRealms      int     `json:"browser_realms"`
 	BundleMS           float64 `json:"bundle_ms"`
 	NativeHostMS       float64 `json:"native_host_ms"`
 	BridgeMS           float64 `json:"bridge_ms"`
