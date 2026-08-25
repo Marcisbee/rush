@@ -68,6 +68,7 @@ The WPE binary is deliberately headless-only. Use the default WebKitGTK build fo
 ```sh
 ./bin/rush test examples/basic.test.ts
 ./bin/rush test examples/browser-api.test.ts examples/javascript.test.js
+./bin/rush test examples/session.test.ts
 ./bin/rush test --json 'examples/*.test.ts'
 ./bin/rush test --headed examples/basic.test.ts
 ./bin/rush stop
@@ -84,6 +85,8 @@ Automatic JSX uses React when the project declares React, Preact when it declare
 The runner supplies `@rush/browser` to external absolute suites from the project's installed dependency, its own adjacent `dist` directory, or `RUSH_BROWSER_MODULE` for custom package layouts. Consumer repositories do not need a temporary local package link when using a built Rush binary.
 
 Before the next suite assigned to a realm, Rush clears the DOM, style nodes, timers, animation frames, registered event listeners, cookies, local and session storage, IndexedDB databases, Cache Storage, service-worker registrations, performance entries, and bundle globals. Bundle scoping supplies a fresh registry and mock runtime for every file. Rush does not allocate a dedicated WebView for every file.
+
+Session tests use `test.session({clients: ["alice", "bob"]})`. The Linux adapter assigns each named client a persistent worker from a bounded four-WebView pool. Each worker has a separate WebKit profile, so clients navigating to the same realtime application do not share cookies, local storage, or session storage. `client.goto(url)` performs lifecycle navigation and `client.evaluate(callback)` sends one coarse callback to execute entirely inside that client's page; DOM and application operations inside the callback do not cross the host bridge. Clients can evaluate concurrently with `Promise.all`, and disposal scrubs visible browser state before returning a worker to the pool.
 
 ## Application automation
 

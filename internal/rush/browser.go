@@ -16,6 +16,7 @@ import (
 type Browser struct {
 	view           webview.WebView
 	server         *http.Server
+	sessions       *SessionPool
 	proxy          *appProxy
 	nativeInput    nativeInput
 	nativeInputErr error
@@ -58,6 +59,11 @@ func NewBrowser(headed bool) (*Browser, error) {
 		response.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = response.Write([]byte("rush"))
 	})
+	mux.HandleFunc("/__rush/session", func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Cache-Control", "no-store")
+		response.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = response.Write([]byte(`<!doctype html><html><body><main data-testid="client">session client</main></body></html>`))
+	})
 	mux.Handle("/", proxy)
 	harnessServer := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = harnessServer.Serve(listener) }()
@@ -71,6 +77,7 @@ func NewBrowser(headed bool) (*Browser, error) {
 	browser := &Browser{
 		view:           view,
 		server:         harnessServer,
+		sessions:       NewSessionPool(headed, defaultSessionPoolSize),
 		proxy:          proxy,
 		nativeInput:    input,
 		nativeInputErr: inputErr,
@@ -88,22 +95,47 @@ func NewBrowser(headed bool) (*Browser, error) {
 		return nil, fmt.Errorf("bind browser-ready bridge: %w", err)
 	}
 	if err := view.Bind("__rushReport", browser.receive); err != nil {
+		browser.sessions.Close()
 		view.Destroy()
 		return nil, fmt.Errorf("bind result bridge: %w", err)
 	}
+	if err := view.Bind("__rushCreateSession", browser.sessions.Create); err != nil {
+		browser.sessions.Close()
+		view.Destroy()
+		return nil, fmt.Errorf("bind session creation bridge: %w", err)
+	}
+	if err := view.Bind("__rushSessionGoto", browser.sessions.Goto); err != nil {
+		browser.sessions.Close()
+		view.Destroy()
+		return nil, fmt.Errorf("bind session navigation bridge: %w", err)
+	}
+	if err := view.Bind("__rushSessionEvaluate", browser.sessions.Evaluate); err != nil {
+		browser.sessions.Close()
+		view.Destroy()
+		return nil, fmt.Errorf("bind session evaluation bridge: %w", err)
+	}
+	if err := view.Bind("__rushDisposeSession", browser.sessions.Dispose); err != nil {
+		browser.sessions.Close()
+		view.Destroy()
+		return nil, fmt.Errorf("bind session disposal bridge: %w", err)
+	}
 	if err := view.Bind("__rushAppNavigate", browser.navigateApp); err != nil {
+		browser.sessions.Close()
 		view.Destroy()
 		return nil, fmt.Errorf("bind application navigation bridge: %w", err)
 	}
 	if err := view.Bind("__rushAppReset", browser.resetApp); err != nil {
+		browser.sessions.Close()
 		view.Destroy()
 		return nil, fmt.Errorf("bind application reset bridge: %w", err)
 	}
 	if err := view.Bind("__rushAppRequestResult", browser.receiveRoute); err != nil {
+		browser.sessions.Close()
 		view.Destroy()
 		return nil, fmt.Errorf("bind request interception bridge: %w", err)
 	}
 	if err := view.Bind("__rushNativeInput", browser.sendNativeInput); err != nil {
+		browser.sessions.Close()
 		view.Destroy()
 		return nil, fmt.Errorf("bind native input bridge: %w", err)
 	}
@@ -117,6 +149,7 @@ func (b *Browser) Ready() <-chan struct{} { return b.ready }
 func (b *Browser) RunLoop()               { b.view.Run() }
 func (b *Browser) Stop()                  { b.view.Terminate() }
 func (b *Browser) Close() {
+	b.sessions.Close()
 	b.view.Destroy()
 	if b.nativeInput != nil {
 		_ = b.nativeInput.Close()
