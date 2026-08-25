@@ -58,6 +58,6 @@ A follow-up prototype kept three independently isolated WebKitGTK realms warm an
 | Rush, same 100 tests | 82.9; 72.9; 109.0; 117.2; 111.4 | 109.0 | 18.7×; passes 10× |
 | Rush warm 100-test repeat | 121.1; 147.9; 142.1; 166.6; 169.5 | 147.9 | Passes under one second |
 
-All 100 tests passed in every sample. This is a measured go decision for bounded parallel realms, not evidence for the single-WebView runtime checked into this revision. The complete 1,169-test Kodē milestones—under 10 seconds and a stretch target under 5 seconds—remain unmeasured and unclaimed.
+All 100 tests passed in every sample. That result selected the bounded parallel-realm architecture now checked into the Linux runner. It remains evidence for the named fixture, host, engine, and repeat method rather than a universal application-performance claim. The complete 1,169-test Kodē milestones—under 10 seconds and a stretch target under 5 seconds—remain unmeasured and unclaimed.
 
 Application, server, PWA, realtime, and deliberately delayed suites must publish their own method and phase attribution. The sub-second browser fixture is never a guarantee for those models.

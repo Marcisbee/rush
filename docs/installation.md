@@ -26,7 +26,7 @@ The default Linux binary dynamically loads the embedded WebView binding, GTK 3, 
 Debian or Ubuntu:
 
 ```sh
-sudo apt-get install libwebkit2gtk-4.1-0 libgtk-3-0 xvfb xauth
+sudo apt-get install libwebkit2gtk-4.1-0 libgtk-3-0 libxtst6 xvfb xauth
 ```
 
 Ubuntu releases using the 64-bit time ABI may provide `libgtk-3-0t64` instead of `libgtk-3-0`. Installing WebKitGTK normally selects the correct GTK package.
@@ -34,12 +34,12 @@ Ubuntu releases using the 64-bit time ABI may provide `libgtk-3-0t64` instead of
 Fedora:
 
 ```sh
-sudo dnf install webkit2gtk4.1 gtk3 xorg-x11-server-Xvfb xorg-x11-xauth
+sudo dnf install webkit2gtk4.1 gtk3 libXtst xorg-x11-server-Xvfb xorg-x11-xauth
 ```
 
 Headless mode starts an authenticated Xvfb display and keeps it with the warm daemon. In a WSL or container environment where `/tmp/.X11-unix` cannot safely host a local socket, Rush uses a loopback TCP display protected by a generated Xauthority cookie.
 
-Headed mode uses the current desktop and requires `DISPLAY` or `WAYLAND_DISPLAY`. It enables the WebView debug flag and uses a separate daemon from headless mode.
+Headed mode uses the current desktop and requires `DISPLAY` or `WAYLAND_DISPLAY`. It enables the WebView debug flag and uses a separate daemon from headless mode. Trusted input uses XTest on the selected X11 display and fails explicitly when `libXtst` or a usable display is unavailable.
 
 ## Linux: optional WPE headless build
 
@@ -69,9 +69,15 @@ The Swift adapter is a library and harness on this revision. It is not selected 
 
 ## Windows
 
-The WebView2 adapter has been validated in project delivery work against the Evergreen Microsoft Edge WebView2 Runtime, including hidden execution, visible DevTools, pooled realms, bridge batching, failure capture, and trusted `SendInput`. Its implementation is not present on this revision, so there is no Windows build command in the checked-in CI yet.
+The WebView2 adapter is available under `platform/webview2` and is validated against the Evergreen Microsoft Edge WebView2 Runtime, including hidden execution, visible DevTools, pooled realms, bridge batching, failure capture, and trusted `SendInput`.
 
-The validated adapter requires a supported Windows desktop, WebView2 Runtime, Go 1.24 or newer, and a writable user-data directory. Trusted input additionally requires an interactive desktop; Windows services in session 0 cannot use it.
+The adapter requires a supported Windows desktop, WebView2 Runtime, Go 1.24 or newer, and a writable user-data directory. Trusted input additionally requires an interactive desktop; Windows services in session 0 cannot use it. Run its standalone validation harness from a Windows shell:
+
+```powershell
+go run ./cmd/rush-webview2-harness -repeats 10
+```
+
+The adapter is not yet selectable through `bin/rush`. See [Windows WebView2 setup and validation](windows-webview2.md).
 
 ## Consumer package resolution
 
@@ -97,9 +103,9 @@ For private cross-repository trials, build a pinned Rush checkout and set an abs
 | `RUSH_BROWSER_MODULE` | Absolute path to the built browser API for private consumer layouts | Resolver search above |
 | `RUSH_JSX_IMPORT_SOURCE` | Overrides automatic JSX runtime selection | React if declared, otherwise Preact if it alone is declared, otherwise React |
 | `RUSH_NODE_ENV` | Compile-time value of `process.env.NODE_ENV` in suites | `test` |
+| `RUSH_WEBVIEW_POOL_SIZE` | Number of reusable Linux browser realms, from one through four | Up to three headless; one headed |
 | `DISPLAY` / `WAYLAND_DISPLAY` | Select the existing desktop for `--headed` | Rush-managed Xvfb in headless Linux mode |
 
 `RUSH_READY_FD` is an internal daemon handshake and is not user configuration.
 
 Changing the JSX import source or Node environment creates a distinct incremental build context. Stop the daemon after changing toolchain revisions or private package paths so the next run starts with an unambiguous process and module graph.
-

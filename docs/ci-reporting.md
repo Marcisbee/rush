@@ -42,19 +42,20 @@ Artifacts are collected after the failed user test stops. Their elapsed time is 
 
 Artifact names include a stable result index plus sanitized suite and test names. Treat DOM snapshots as potentially sensitive application data. CI should upload them only from private runs, use short retention, and never capture secrets or production accounts.
 
-The current Linux proof CLI does not yet invoke the adapter-independent collector. macOS and validated Windows adapter harnesses exercise their native screenshot and DOM capture paths independently.
+The current Linux CLI does not yet invoke the adapter-independent collector. The macOS and Windows adapter harnesses exercise their native screenshot and DOM capture paths independently.
 
 ## Checked-in GitHub Actions
 
 `.github/workflows/ci.yml` runs on every pull request and push to `main`:
 
 - `Go and browser API` installs pinned Go and Node toolchains, checks TypeScript, runs Vitest API tests, runs all Go tests, and repeats Go tests with the race detector.
-- `Linux WebKitGTK conformance and performance` installs the real WebKitGTK/Xvfb runtime, builds Rush, runs `doctor`, executes the JavaScript/TypeScript/React browser examples, and enforces the built-in benchmark targets.
+- `Linux WebKitGTK conformance and performance` installs the real WebKitGTK/Xvfb/XTest runtime, builds Rush, runs `doctor`, executes browser, app-automation, and isolated-session examples, and enforces the built-in benchmark targets.
+- `Windows WebView2 adapter` runs the Windows Go packages and the real WebView2 harness for conformance, warm performance, trusted input, bridge batching, failure capture, and realm reuse.
 - The Linux job uploads raw benchmark JSON for 14 days even when the benchmark command misses a target.
 
 `.github/workflows/macos-adapter.yml` runs `swift test` on macOS for Swift adapter changes and on pushes to `main` that touch the adapter. It validates hidden WKWebView conformance and its performance harness.
 
-Windows CI should be added with the WebView2 adapter when that implementation lands. Until then, a green core workflow is not evidence of Windows support.
+A green core job alone is not evidence for a native adapter; use the corresponding real-WebView job or harness result.
 
 ## CI consumption guidance
 
@@ -68,4 +69,3 @@ For a private consumer trial:
 6. Stop the warm daemon in an `always()` cleanup step.
 
 Do not turn benchmark samples into a public badge or release claim while the repository and product names remain provisional.
-

@@ -96,7 +96,7 @@ Synthetic calls are intentionally fast and remain inside the page. They do not c
 
 ## Isolation and timing
 
-Before the next suite, the Linux browser runtime clears the DOM, injected style nodes, timers, animation frames, registered event listeners, cookies, local and session storage, performance entries, and globals added by the previous bundle. A fresh registry and mock runtime are scoped to every file.
+Linux assigns files deterministically across a bounded warm WebView pool. Before a realm's next suite, it clears the DOM, injected style nodes, timers, animation frames, registered event listeners, cookies, local and session storage, IndexedDB, Cache Storage, service workers, performance entries, and globals added by the previous bundle. A fresh registry and mock runtime are scoped to every file. App tests also reset routing and application-frame state; named session clients use independent WebKit profiles and are scrubbed before reuse.
 
 The native response reports:
 
@@ -106,5 +106,7 @@ The native response reports:
 - `network`: WebKit resource-timing duration observed during the suite.
 - `intentional wait`: requested delays for timers that fired during a test.
 - `page total`: registration and test execution inside WebKit.
+
+JSON output also reports request-level bundle, native-host, bridge, browser-execution, reset, and reporting timings, plus the number of active browser realms.
 
 Network and timers can overlap, so attribution phases are diagnostic signals rather than an accounting identity. Build time is never folded into page time.

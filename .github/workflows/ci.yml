@@ -56,7 +56,7 @@ jobs:
       - name: Install WebKitGTK runtime
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libwebkit2gtk-4.1-0 xvfb xauth
+          sudo apt-get install --yes libwebkit2gtk-4.1-0 libxtst6 xvfb xauth
       - run: npm ci
       - name: Build Rush
         run: make build
@@ -69,6 +69,8 @@ jobs:
           examples/browser-api.test.ts
           examples/javascript.test.js
           examples/react.test.tsx
+          examples/app-automation.test.ts
+          examples/session.test.ts
       - name: Measure product performance contract
         run: |
           mkdir -p .rush/ci
@@ -84,3 +86,24 @@ jobs:
       - name: Stop warm daemon
         if: always()
         run: ./bin/rush stop || true
+
+  windows-webview2:
+    name: Windows WebView2 adapter
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Test Windows host packages
+        run: go test ./platform/webview2 ./harness
+      - name: Run real WebView2 conformance harness
+        run: go run ./cmd/rush-webview2-harness -repeats 5

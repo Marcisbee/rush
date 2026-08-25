@@ -39,6 +39,55 @@ func TestBuilderReusesContextAndSeesEdits(t *testing.T) {
 	}
 }
 
+func TestBuilderBatchesSuitesAndCachesUnchangedDependencyGraph(t *testing.T) {
+	rushRoot, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("RUSH_BROWSER_MODULE", filepath.Join(rushRoot, "dist", "index.js"))
+	directory := t.TempDir()
+	dependency := filepath.Join(directory, "value.ts")
+	first := filepath.Join(directory, "first.test.ts")
+	second := filepath.Join(directory, "second.test.ts")
+	if err := os.WriteFile(dependency, []byte("export const value = 'before'"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(first, []byte("import { value } from './value'; import { test } from '@rush/browser'; test(value, () => {})"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(second, []byte("import { test } from '@rush/browser'; test('second', () => {})"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	builder := NewBuilder()
+	defer builder.Close()
+	initial, initialMS, err := builder.BuildBatch(directory, []string{first, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(initial) != 2 || initialMS <= 0 || !strings.Contains(initial[0].Source, "before") || !strings.Contains(initial[1].Source, "second") {
+		t.Fatalf("unexpected initial batch: count=%d build=%f", len(initial), initialMS)
+	}
+	cached, cachedMS, err := builder.BuildBatch(directory, []string{first, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cachedMS != 0 || cached[0].Hash != initial[0].Hash || cached[1].Hash != initial[1].Hash {
+		t.Fatalf("unchanged graph was not served from cache: build=%f", cachedMS)
+	}
+
+	if err := os.WriteFile(dependency, []byte("export const value = 'after dependency edit'"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	rebuilt, rebuiltMS, err := builder.BuildBatch(directory, []string{first, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rebuiltMS <= 0 || rebuilt[0].Hash == initial[0].Hash || !strings.Contains(rebuilt[0].Source, "after dependency edit") {
+		t.Fatalf("dependency edit did not invalidate the batch: build=%f", rebuiltMS)
+	}
+}
+
 func TestBuilderReportsTypeScriptSyntaxErrors(t *testing.T) {
 	directory, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {

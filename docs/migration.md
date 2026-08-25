@@ -62,7 +62,7 @@ Use a separate `.rush.test.*` pattern during migration. This prevents both runne
 
 The established proof boundary is 12 files and exactly 100 tests covering React rendering, Testing Library and user-event behavior, extensive mocks, fake timers, storage, and accessibility.
 
-The sequential architecture failed the required 10× comparison even after batching and caching. The bounded three-realm prototype preserved per-file isolation and measured 109.0 ms against a 2,035.5 ms Vitest/jsdom baseline, or 18.7×, with a separate 147.9 ms warm median. Use that architecture only after it is integrated into the delivery branch and re-run the unchanged proof in Kodē CI.
+The sequential architecture failed the required 10× comparison even after batching and caching. The bounded three-realm design preserved per-file isolation and measured 109.0 ms against a 2,035.5 ms Vitest/jsdom baseline, or 18.7×, with a separate 147.9 ms warm median. That architecture is now integrated in the Linux runner; re-run the unchanged proof in Kodē CI before migrating beyond the representative slice.
 
 Do not claim the complete 1,169-test milestone. Port the remaining suite in browser-safe behavior slices, keep Node/server tests in their current runner, and measure the full suite before adopting the under-10-second milestone or under-5-second stretch target.
 
@@ -79,13 +79,13 @@ Run synthetic coverage in ordinary headless browser CI. Keep trusted-input cover
 
 Strike's representative app proof covers seeded authentication, real navigation, trusted password entry, token storage and isolation, request inspection, and transient feed recovery. That proof validates the native app-adapter direction, including transparent URL semantics and cross-realm DOM matching.
 
-Do not move the proof onto the checked-in Linux CLI yet: app navigation, interception, and native input are pending integration. When they land, start Strike's deterministic test server and seed data outside Rush, run the same authentication and recovery flow, verify storage isolation, and keep application/network/wait timing separate from runner overhead. Retain the previous end-to-end command as rollback.
+The checked-in Linux CLI now integrates app navigation, interception, storage cleanup, and native input. Start Strike's deterministic test server and seed data outside Rush, run the same authentication and recovery flow against a pinned revision, verify storage isolation, and keep application/network/wait timing separate from runner overhead. Retain the previous end-to-end command as rollback.
 
 ### Puzzle
 
 Puzzle's representative session proof uses four isolated clients in one realtime room. It verifies independent local/session storage and window/history state, concurrent grouping and contention, and convergence after reconnect.
 
-The proof passed against the isolated-session adapter with application, network, and intentional-wait phases reported separately. It does not imply the checked-in Linux CLI supports sessions. Adopt it only after the session adapter is integrated, then re-run without local package links and verify that client profiles reset between tests. Keep the original four-player browser scenario until the Rush job is stable in CI.
+The proof passed against the isolated-session adapter with application, network, and intentional-wait phases reported separately. The adapter is now integrated in the checked-in Linux CLI. Re-run the four-client scenario against a pinned revision without local package links, verify that client profiles reset between tests, and keep the original browser scenario until the Rush job is stable in CI.
 
 ### Other workspace projects
 

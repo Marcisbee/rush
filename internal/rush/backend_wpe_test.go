@@ -22,7 +22,8 @@ func TestWPEBackendUsesDedicatedDaemonSocket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if filepath.Base(socket) != "daemon-wpe-headless.sock" {
+	base := filepath.Base(socket)
+	if !strings.HasPrefix(base, "daemon-") || !strings.HasSuffix(base, "-wpe-headless.sock") {
 		t.Fatalf("WPE socket = %s", socket)
 	}
 }
