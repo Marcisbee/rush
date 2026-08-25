@@ -1,1 +1,5 @@
+/bin/
+/node_modules/
+*.sock
+*.log
 .rush/
