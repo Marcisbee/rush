@@ -90,6 +90,45 @@ vitestDescribe("test models", () => {
     assert(navigations).toEqual(["https://example.test/account"]);
   });
 
+  vitestTest("uses a fresh application realm and disposes it after each app test", async () => {
+    const disposed: number[] = [];
+    let sequence = 0;
+    configureRuntime({
+      createApp: () => {
+        const id = ++sequence;
+        const frame = document.createElement("iframe");
+        document.body.append(frame);
+        const testDocument = frame.contentDocument as Document;
+        testDocument.title = `app-${id}`;
+        testDocument.body.innerHTML = `<button>realm ${id}</button>`;
+        return {
+          window: () => frame.contentWindow as Window,
+          document: () => testDocument,
+          url: () => `https://app-${id}.test/`,
+          goto: async () => {},
+          network: {
+            route: () => () => {},
+            requests: () => [],
+            waitForRequest: async () => { throw new Error("unused"); },
+          },
+          dispose: () => { disposed.push(id); frame.remove(); },
+        };
+      },
+    });
+    test.app("first", ({ page, document: testDocument }) => {
+      assert(testDocument.title).toBe("app-1");
+      assert(page.getByRole("button").textContent()).toBe("realm 1");
+    });
+    test.app("second", ({ page, url }) => {
+      assert(url()).toBe("https://app-2.test/");
+      assert(page.getByRole("button").textContent()).toBe("realm 2");
+    });
+
+    const result = await run({ emit: false });
+    assert(result.failed).toBe(0);
+    assert(disposed).toEqual([1, 2]);
+  });
+
   vitestTest("creates named isolated session clients and disposes them", async () => {
     const disposed: string[] = [];
     configureRuntime({

@@ -16,6 +16,9 @@ const runtimeHTML = `<!doctype html>
   };
   const timerHandles = new Map();
   const listeners = [];
+  const appRealms = new Map();
+  let appSequence = 0;
+  let nativeNetwork = 0;
   let collecting = false;
   let intentionalWait = 0;
   let baselineGlobals;
@@ -25,6 +28,189 @@ const runtimeHTML = `<!doctype html>
     const message = (error.name || "Error") + (error.message ? ": " + error.message : "");
     const stack = String(error.stack || "");
     return stack.startsWith(message) ? stack : message + (stack ? "\n" + stack : "");
+  }
+
+  function matchesRequest(pattern, request) {
+    if (typeof pattern === "function") return Boolean(pattern(request));
+    if (pattern instanceof RegExp) {
+      pattern.lastIndex = 0;
+      return pattern.test(request.url);
+    }
+    if (!pattern.includes("*")) return request.url === pattern;
+    const escaped = pattern.split("**").map(part => part.split("*").map(segment =>
+      segment.replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+    ).join("[^/]*")).join(".*");
+    return new RegExp("^" + escaped + "$").test(request.url);
+  }
+
+  function makeNetwork(realm) {
+    return {
+      route(pattern, handler) {
+        const registration = {pattern, handler};
+        realm.routes.push(registration);
+        return () => {
+          const index = realm.routes.indexOf(registration);
+          if (index >= 0) realm.routes.splice(index, 1);
+        };
+      },
+      requests(pattern) {
+        return Object.freeze(realm.requests.filter(request => pattern === undefined || matchesRequest(pattern, request)));
+      },
+      waitForRequest(pattern, options = {}) {
+        const found = realm.requests.find(request => matchesRequest(pattern, request));
+        if (found) return Promise.resolve(found);
+        return new Promise((resolve, reject) => {
+          const timeout = options.timeout ?? 5000;
+          const waiter = {pattern, resolve, reject, timer: native.setTimeout(() => {
+            const index = realm.waiters.indexOf(waiter);
+            if (index >= 0) realm.waiters.splice(index, 1);
+            reject(new Error("Timed out waiting for application request after " + timeout + "ms"));
+          }, timeout)};
+          realm.waiters.push(waiter);
+        });
+      },
+    };
+  }
+
+  function recordRequest(realm, request) {
+    const immutable = Object.freeze({...request, headers: Object.freeze({...request.headers})});
+    realm.requests.push(immutable);
+    for (const waiter of [...realm.waiters]) {
+      if (!matchesRequest(waiter.pattern, immutable)) continue;
+      native.clearTimeout(waiter.timer);
+      realm.waiters.splice(realm.waiters.indexOf(waiter), 1);
+      waiter.resolve(immutable);
+    }
+    return immutable;
+  }
+
+  async function handleRequest(request) {
+    const realm = appRealms.get(request.realm);
+    if (!realm) {
+      await window.__rushAppRequestResult(request.id, JSON.stringify({action: "continue"}));
+      return;
+    }
+    const inspected = recordRequest(realm, request);
+    const registration = [...realm.routes].reverse().find(item => matchesRequest(item.pattern, inspected));
+    if (!registration) {
+      await window.__rushAppRequestResult(request.id, JSON.stringify({action: "continue"}));
+      return;
+    }
+    let decision;
+    const settle = value => {
+      if (decision) throw new Error("Application route was already resolved");
+      decision = value;
+    };
+    const route = Object.freeze({
+      request: inspected,
+      fulfill: (response = {}) => settle({action: "fulfill", ...response}),
+      continue: (overrides = {}) => settle({action: "continue", ...overrides}),
+      abort: (reason = "request aborted by Rush route") => settle({action: "abort", body: reason}),
+    });
+    try {
+      await registration.handler(route);
+      decision ||= {action: "continue"};
+    } catch (error) {
+      decision = {action: "abort", body: formatError(error)};
+    }
+    await window.__rushAppRequestResult(request.id, JSON.stringify(decision));
+  }
+
+  function elementPoint(element) {
+    const rect = element.getBoundingClientRect();
+    if (!rect.width && !rect.height) throw new Error("Trusted native input target has no rendered bounds");
+    let x = rect.left + rect.width / 2;
+    let y = rect.top + rect.height / 2;
+    let current = element.ownerDocument.defaultView;
+    while (current && current !== current.top) {
+      const frame = current.frameElement;
+      if (!frame) break;
+      const frameRect = frame.getBoundingClientRect();
+      x += frameRect.left;
+      y += frameRect.top;
+      current = frame.ownerDocument.defaultView;
+    }
+    const top = current || window;
+    return {x: top.screenX + x, y: top.screenY + y};
+  }
+
+  function makeNativeAutomation() {
+    const send = async (action, element, extra = {}) => {
+      const point = element ? elementPoint(element) : {};
+      await window.__rushNativeInput(JSON.stringify({action, ...point, ...extra}));
+    };
+    return {
+      click: element => send("click", element),
+      type: (element, text) => send("type", element, {text}),
+      press: (key, element) => send("press", element, {key}),
+    };
+  }
+
+  async function clearOriginStorage() {
+    try { localStorage.clear(); } catch (_) {}
+    try { sessionStorage.clear(); } catch (_) {}
+    try { document.cookie.split(";").forEach(cookie => { document.cookie = cookie.split("=")[0].trim() + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/"; }); } catch (_) {}
+    try {
+      if (indexedDB.databases) {
+        for (const database of await indexedDB.databases()) {
+          if (!database.name) continue;
+          await new Promise(resolve => {
+            const deletion = indexedDB.deleteDatabase(database.name);
+            deletion.onsuccess = deletion.onerror = deletion.onblocked = resolve;
+          });
+        }
+      }
+    } catch (_) {}
+    try { await caches.keys().then(keys => Promise.all(keys.map(key => caches.delete(key)))); } catch (_) {}
+    try {
+      if (navigator.serviceWorker) {
+        await navigator.serviceWorker.getRegistrations().then(registrations => Promise.all(registrations.map(registration => registration.unregister())));
+      }
+    } catch (_) {}
+  }
+
+  async function createAppRealm() {
+    await clearOriginStorage();
+    const id = "app-" + (++appSequence);
+    const frame = document.createElement("iframe");
+    frame.dataset.rushApp = id;
+    frame.setAttribute("aria-label", "Rush application under test");
+    frame.style.cssText = "border:0;width:100%;height:100%;position:fixed;inset:0";
+    document.body.append(frame);
+    const realm = {id, frame, currentURL: "about:blank", routes: [], requests: [], waiters: []};
+    realm.network = makeNetwork(realm);
+    appRealms.set(id, realm);
+    return {
+      window: () => frame.contentWindow,
+      document: () => frame.contentDocument,
+      url: () => realm.currentURL,
+      async goto(url) {
+        const proxied = await window.__rushAppNavigate(id, url);
+        await new Promise((resolve, reject) => {
+          const loaded = () => { cleanup(); realm.currentURL = url; resolve(); };
+          const failed = () => { cleanup(); reject(new Error("Application navigation failed: " + url)); };
+          const cleanup = () => {
+            native.removeEventListener.call(frame, "load", loaded);
+            native.removeEventListener.call(frame, "error", failed);
+          };
+          native.addEventListener.call(frame, "load", loaded, {once: true});
+          native.addEventListener.call(frame, "error", failed, {once: true});
+          frame.src = proxied;
+        });
+      },
+      network: realm.network,
+      native: makeNativeAutomation(),
+      async dispose() {
+        for (const waiter of realm.waiters.splice(0)) {
+          native.clearTimeout(waiter.timer);
+          waiter.reject(new Error("Application realm was disposed"));
+        }
+        appRealms.delete(id);
+        await window.__rushAppReset(id);
+        frame.remove();
+        await clearOriginStorage();
+      },
+    };
   }
 
   EventTarget.prototype.addEventListener = function(type, listener, options) {
@@ -62,8 +248,13 @@ const runtimeHTML = `<!doctype html>
   };
   window.cancelAnimationFrame = handle => { timerHandles.delete(handle); native.cancelAnimationFrame(handle); };
 
-  function clearState() {
+  async function clearState() {
     collecting = false;
+    for (const realm of [...appRealms.values()]) {
+      appRealms.delete(realm.id);
+      try { await window.__rushAppReset(realm.id); } catch (_) {}
+      realm.frame.remove();
+    }
     for (const [handle, kind] of timerHandles) {
       if (kind === "interval") native.clearInterval(handle);
       else if (kind === "animation") native.cancelAnimationFrame(handle);
@@ -75,9 +266,7 @@ const runtimeHTML = `<!doctype html>
     }
     document.body.replaceChildren();
     document.querySelectorAll("head style, head link[rel=stylesheet]").forEach(node => node.remove());
-    try { localStorage.clear(); } catch (_) {}
-    try { sessionStorage.clear(); } catch (_) {}
-    try { document.cookie.split(";").forEach(cookie => { document.cookie = cookie.split("=")[0].trim() + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/"; }); } catch (_) {}
+    await clearOriginStorage();
     performance.clearMarks();
     performance.clearMeasures();
     performance.clearResourceTimings();
@@ -89,10 +278,11 @@ const runtimeHTML = `<!doctype html>
       }
     }
     intentionalWait = 0;
+    nativeNetwork = 0;
   }
 
   async function execute(id, filename, source) {
-    clearState();
+    await clearState();
     const suiteStart = performance.now();
     let results = [];
     let callbackWall = 0;
@@ -104,7 +294,7 @@ const runtimeHTML = `<!doctype html>
       if (!api || typeof api.run !== "function") {
         throw new Error("suite bundle did not expose the @rush/browser runtime");
       }
-      api.configureRuntime({});
+      api.configureRuntime({createApp: createAppRealm});
       const runResult = await api.run({emit: false});
       results = runResult.tests.map(item => ({
         name: item.fullName,
@@ -118,7 +308,7 @@ const runtimeHTML = `<!doctype html>
     }
     collecting = false;
     const total = performance.now() - suiteStart;
-    const network = performance.getEntriesByType("resource").reduce((sum, entry) => sum + entry.duration, 0);
+    const network = nativeNetwork + performance.getEntriesByType("resource").reduce((sum, entry) => sum + entry.duration, 0);
     const application = Math.max(0, callbackWall - intentionalWait - network);
     const runner = Math.max(0, total - callbackWall);
     const payload = {
@@ -137,7 +327,11 @@ const runtimeHTML = `<!doctype html>
     await window.__rushReport(JSON.stringify(payload));
   }
 
-  window.__rush = {execute};
+  function networkComplete(_realm, duration) {
+    if (collecting) nativeNetwork += Math.max(0, Number(duration) || 0);
+  }
+
+  window.__rush = {execute, handleRequest, networkComplete};
   baselineGlobals = new Set(Reflect.ownKeys(globalThis));
   window.__rushReady();
 })();
