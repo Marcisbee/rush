@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux && !rush_wpe
 
 package rush
 
@@ -23,6 +23,7 @@ type x11Input struct {
 
 	closeDisplay    func(uintptr) int32
 	flush           func(uintptr) int32
+	sync            func(uintptr, int32) int32
 	stringToKeysym  func(*byte) uintptr
 	keysymToKeycode func(uintptr, uintptr) uint8
 	fakeMotion      func(uintptr, int32, int32, int32, uint64) int32
@@ -47,6 +48,7 @@ func newNativeInput() (nativeInput, error) {
 	driver := &x11Input{x11: x11, xtst: xtst}
 	purego.RegisterLibFunc(&driver.closeDisplay, x11, "XCloseDisplay")
 	purego.RegisterLibFunc(&driver.flush, x11, "XFlush")
+	purego.RegisterLibFunc(&driver.sync, x11, "XSync")
 	purego.RegisterLibFunc(&driver.stringToKeysym, x11, "XStringToKeysym")
 	purego.RegisterLibFunc(&driver.keysymToKeycode, x11, "XKeysymToKeycode")
 	purego.RegisterLibFunc(&driver.fakeMotion, xtst, "XTestFakeMotionEvent")
@@ -109,7 +111,14 @@ func (driver *x11Input) moveAndClick(x, y float64) error {
 		return errors.New("native input target has invalid coordinates")
 	}
 	if driver.fakeMotion(driver.display, -1, int32(math.Round(x)), int32(math.Round(y)), 0) == 0 ||
-		driver.fakeButton(driver.display, 1, 1, 0) == 0 || driver.fakeButton(driver.display, 1, 0, 0) == 0 {
+		driver.sync(driver.display, 0) == 0 {
+		return errors.New("XTest rejected trusted mouse motion")
+	}
+	// Let WebKit process the crossing and motion events before the button press.
+	// This matters for controls whose hover/focus state changes their layout.
+	time.Sleep(5 * time.Millisecond)
+	if driver.fakeButton(driver.display, 1, 1, 0) == 0 || driver.fakeButton(driver.display, 1, 0, 0) == 0 ||
+		driver.sync(driver.display, 0) == 0 {
 		return errors.New("XTest rejected trusted mouse input")
 	}
 	return nil
@@ -150,10 +159,7 @@ func (driver *x11Input) pressChord(chord string) error {
 }
 
 func (driver *x11Input) typeRune(character rune) error {
-	name := string(character)
-	if character == ' ' {
-		name = "space"
-	}
+	name, shift := x11RuneKey(character)
 	code, err := driver.keycode(name)
 	if err != nil && character > unicode.MaxASCII {
 		keysym := uintptr(0x01000000 | character)
@@ -166,7 +172,6 @@ func (driver *x11Input) typeRune(character rune) error {
 	if err != nil {
 		return err
 	}
-	shift := unicode.IsUpper(character) || strings.ContainsRune("~!@#$%^&*()_+{}|:\"<>?", character)
 	var shiftCode uint32
 	if shift {
 		shiftCode, err = driver.keycode("Shift_L")
@@ -181,6 +186,13 @@ func (driver *x11Input) typeRune(character rune) error {
 		driver.fakeKey(driver.display, shiftCode, 0, 0)
 	}
 	return nil
+}
+
+func x11RuneKey(character rune) (string, bool) {
+	if name, ok := x11RuneNames[character]; ok {
+		return name, strings.ContainsRune("~!@#$%^&*()_+{}|:\"<>?", character)
+	}
+	return string(character), unicode.IsUpper(character)
 }
 
 func (driver *x11Input) keycode(name string) (uint32, error) {
@@ -219,4 +231,13 @@ var x11KeyNames = map[string]string{
 	"delete": "Delete", "down": "Down", "end": "End", "enter": "Return", "escape": "Escape",
 	"home": "Home", "left": "Left", "meta": "Super_L", "pagedown": "Page_Down", "pageup": "Page_Up",
 	"right": "Right", "shift": "Shift_L", "space": "space", "tab": "Tab", "up": "Up",
+}
+
+var x11RuneNames = map[rune]string{
+	' ': "space", '!': "exclam", '"': "quotedbl", '#': "numbersign", '$': "dollar",
+	'%': "percent", '&': "ampersand", '\'': "apostrophe", '(': "parenleft", ')': "parenright",
+	'*': "asterisk", '+': "plus", ',': "comma", '-': "minus", '.': "period", '/': "slash",
+	':': "colon", ';': "semicolon", '<': "less", '=': "equal", '>': "greater", '?': "question",
+	'@': "at", '[': "bracketleft", '\\': "backslash", ']': "bracketright", '^': "asciicircum",
+	'_': "underscore", '`': "grave", '{': "braceleft", '|': "bar", '}': "braceright", '~': "asciitilde",
 }

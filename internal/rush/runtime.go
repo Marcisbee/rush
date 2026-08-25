@@ -116,32 +116,78 @@ const runtimeHTML = `<!doctype html>
     await window.__rushAppRequestResult(request.id, JSON.stringify(decision));
   }
 
-  function elementPoint(element) {
-    const rect = element.getBoundingClientRect();
-    if (!rect.width && !rect.height) throw new Error("Trusted native input target has no rendered bounds");
-    let x = rect.left + rect.width / 2;
-    let y = rect.top + rect.height / 2;
+  function nextLayout() {
+    return new Promise(resolve => native.requestAnimationFrame(() => native.requestAnimationFrame(resolve)));
+  }
+
+  async function elementPoint(element) {
+    if (!element.isConnected) throw new Error("Trusted native input target is detached");
+    element.scrollIntoView({block: "center", inline: "center"});
+    await nextLayout();
+    const view = element.ownerDocument.defaultView;
+    const candidate = [...element.getClientRects()].map(rect => ({
+      left: Math.max(0, rect.left),
+      top: Math.max(0, rect.top),
+      right: Math.min(view.innerWidth, rect.right),
+      bottom: Math.min(view.innerHeight, rect.bottom),
+    })).find(rect => {
+      if (rect.right <= rect.left || rect.bottom <= rect.top) return false;
+      const hit = element.ownerDocument.elementFromPoint((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
+      return hit === element || element.contains(hit);
+    });
+    if (!candidate) throw new Error("Trusted native input target has no unobscured rendered bounds");
+    let x = (candidate.left + candidate.right) / 2;
+    let y = (candidate.top + candidate.bottom) / 2;
     let current = element.ownerDocument.defaultView;
     while (current && current !== current.top) {
       const frame = current.frameElement;
       if (!frame) break;
       const frameRect = frame.getBoundingClientRect();
-      x += frameRect.left;
-      y += frameRect.top;
+      const scaleX = frame.offsetWidth ? frameRect.width / frame.offsetWidth : 1;
+      const scaleY = frame.offsetHeight ? frameRect.height / frame.offsetHeight : 1;
+      x = frameRect.left + (frame.clientLeft + x) * scaleX;
+      y = frameRect.top + (frame.clientTop + y) * scaleY;
       current = frame.ownerDocument.defaultView;
     }
-    const top = current || window;
-    return {x: top.screenX + x, y: top.screenY + y};
+    return {targeted: true, x, y};
   }
 
   function makeNativeAutomation() {
     const send = async (action, element, extra = {}) => {
-      const point = element ? elementPoint(element) : {};
+      const point = element ? await elementPoint(element) : {};
       await window.__rushNativeInput(JSON.stringify({action, ...point, ...extra}));
     };
+    const observe = async (element, type, count, action, message, timeout = 1000) => {
+      if (count === 0) return action();
+      let cleanup = () => {};
+      const received = new Promise((resolve, reject) => {
+        let remaining = count;
+        const observed = event => {
+          if (!event.isTrusted || type === "keyup" && ["Shift", "Control", "Alt", "Meta"].includes(event.key)) return;
+          if (--remaining !== 0) return;
+          cleanup();
+          resolve();
+        };
+        const timer = native.setTimeout(() => {
+          cleanup();
+          reject(new Error(message));
+        }, timeout);
+        cleanup = () => {
+          native.clearTimeout(timer);
+          native.removeEventListener.call(element, type, observed);
+        };
+        native.addEventListener.call(element, type, observed);
+      });
+      try {
+        await action();
+        await received;
+      } finally {
+        cleanup();
+      }
+    };
     return {
-      click: element => send("click", element),
-      type: (element, text) => send("type", element, {text}),
+      click: element => observe(element, "click", 1, () => send("click", element), "Trusted native click did not reach its target"),
+      type: (element, text) => observe(element, "keyup", [...text].length, () => send("type", element, {text}), "Trusted native typing did not reach its target", Math.max(1000, [...text].length * 50)),
       press: (key, element) => send("press", element, {key}),
     };
   }

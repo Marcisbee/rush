@@ -214,5 +214,22 @@ func (b *Browser) sendNativeInput(raw string) error {
 	if err := json.Unmarshal([]byte(raw), &request); err != nil {
 		return fmt.Errorf("decode native input request: %w", err)
 	}
+	if request.Targeted {
+		type originResult struct {
+			x, y float64
+			err  error
+		}
+		origin := make(chan originResult, 1)
+		b.view.Dispatch(func() {
+			x, y, err := nativeContentOrigin(b.view.Window())
+			origin <- originResult{x: x, y: y, err: err}
+		})
+		result := <-origin
+		if result.err != nil {
+			return result.err
+		}
+		request.X += result.x
+		request.Y += result.y
+	}
 	return b.nativeInput.Do(request)
 }

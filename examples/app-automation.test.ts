@@ -25,8 +25,14 @@ test.app("navigates, intercepts requests, and uses trusted input", async ({goto,
   network.route(`${appOrigin}/account`, route => route.fulfill({
     headers: {"Content-Type": "text/html; charset=utf-8"},
     body: `
-      <label>Name <input aria-label="Name"></label>
-      <button type="button">Save</button>
+      <form>
+        <label>Email <input aria-label="Email"></label>
+        <button type="submit">Save</button>
+      </form>
+      <nav aria-label="Targets">
+        <button type="button" data-target="left">Left</button><button type="button" data-target="middle">Middle</button><button type="button" data-target="right">Right</button>
+      </nav>
+      <output data-clicks aria-label="Click results"></output>
       <output>loading</output>
       <script>
         const input = document.querySelector("input")
@@ -34,10 +40,18 @@ test.app("navigates, intercepts requests, and uses trusted input", async ({goto,
         input.addEventListener("keydown", event => {
           if (event.key === "Enter") input.dataset.keyTrusted = String(event.isTrusted)
         })
-        const button = document.querySelector("button")
-        button.addEventListener("click", event => button.dataset.trusted = String(event.isTrusted))
+        const form = document.querySelector("form")
+        form.addEventListener("submit", event => {
+          event.preventDefault()
+          form.dataset.trusted = String(event.isTrusted)
+          fetch("/api/save", {method: "POST", body: input.value})
+        })
+        const clicks = document.querySelector("[data-clicks]")
+        document.querySelectorAll("[data-target]").forEach(button => button.addEventListener("click", event => {
+          clicks.textContent += event.currentTarget.dataset.target + ":" + event.isTrusted + ","
+        }))
         fetch("/api/user").then(response => response.json()).then(user => {
-          document.querySelector("output").textContent = user.name
+          document.querySelectorAll("output")[1].textContent = user.name
         })
       </script>
     `,
@@ -46,27 +60,36 @@ test.app("navigates, intercepts requests, and uses trusted input", async ({goto,
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({name: "Ada"}),
   }))
+  network.route("**/api/save", route => route.fulfill({status: 204}))
 
   const apiRequest = network.waitForRequest(`${appOrigin}/api/user`)
   await goto(`${appOrigin}/account`)
   expect((await apiRequest).method).toBe("GET")
   await page.findByText("Ada")
 
-  const input = page.getByRole("textbox", {name: "Name"})
+  const input = page.getByRole("textbox", {name: "Email"})
   input.fill("synthetic")
   expect(input.getAttribute("data-trusted")).toBe("false")
   input.fill("")
-  await native.type(input, "Ada")
+  await native.type(input, "ada@example.test")
   await waitFor(() => expect(input.getAttribute("data-trusted")).toBe("true"))
-  expect((input.element() as HTMLInputElement).value).toBe("Ada")
+  expect((input.element() as HTMLInputElement).value).toBe("ada@example.test")
   await native.press("Enter", input)
   await waitFor(() => expect(input.getAttribute("data-key-trusted")).toBe("true"))
-  const button = page.getByRole("button", {name: "Save"})
-  await native.click(button)
-  await waitFor(() => expect(button.getAttribute("data-trusted")).toBe("true"))
+
+  const expectedTargets = ["left", "middle", "right", "middle", "left", "right", "left", "middle"]
+  for (const target of expectedTargets) {
+    await native.click(page.getByRole("button", {name: target[0].toUpperCase() + target.slice(1)}))
+  }
+  expect(page.getByRole("status", {name: "Click results"}).textContent()).toBe(expectedTargets.map(target => `${target}:true,`).join(""))
+
+  const saved = network.waitForRequest(`${appOrigin}/api/save`)
+  await native.click(page.getByRole("button", {name: "Save"}))
+  expect((await saved).body).toBe("ada@example.test")
   expect(network.requests().map(request => request.url)).toEqual([
     `${appOrigin}/account`,
     `${appOrigin}/api/user`,
+    `${appOrigin}/api/save`,
   ])
 })
 
