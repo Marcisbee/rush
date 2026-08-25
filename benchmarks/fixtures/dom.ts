@@ -1,3 +1,5 @@
+import { expect, test } from "@rush/browser"
+
 for (let index = 0; index < 1_000; index++) {
   test(`DOM ${index}`, () => {
     const element = document.createElement("div")

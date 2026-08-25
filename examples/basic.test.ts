@@ -1,11 +1,13 @@
+import { beforeEach, describe, expect, screen, test } from "@rush/browser"
+
 describe("Rush browser runtime", () => {
   beforeEach(() => {
     document.body.innerHTML = `<main><button>Save</button></main>`
   })
 
   test("executes TypeScript in the page", () => {
-    const button: HTMLButtonElement | null = document.querySelector("button")
-    expect(button?.textContent).toBe("Save")
+    const button = screen.getByRole("button", {name: "Save"})
+    expect(button.textContent).toBe("Save")
   })
 
   test("supports asynchronous tests", async () => {

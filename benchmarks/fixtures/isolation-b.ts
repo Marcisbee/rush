@@ -1,3 +1,5 @@
+import { expect, test } from "@rush/browser"
+
 test("receives a reset browser", () => {
   window.dispatchEvent(new Event("rush-leak"))
   expect(document.body.textContent).toBe("")

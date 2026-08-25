@@ -1,6 +1,7 @@
 .PHONY: build test bench clean
 
 build:
+	npm run build
 	mkdir -p bin
 	go build -o bin/rush ./cmd/rush
 

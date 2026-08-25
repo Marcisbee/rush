@@ -128,14 +128,14 @@ func benchmarkRun(root, file string) (rush.Response, error) {
 }
 
 func benchmarkRebuild(root string, repeat int) (benchmarkResult, error) {
-	temp, err := os.MkdirTemp("", "rush-rebuild-")
+	temp, err := os.MkdirTemp(root, ".rush-rebuild-")
 	if err != nil {
 		return benchmarkResult{}, err
 	}
 	defer os.RemoveAll(temp)
 	entry := filepath.Join(temp, "rebuild.ts")
 	write := func(iteration int) error {
-		content := fmt.Sprintf("for (let i = 0; i < 100; i++) test(`rebuild ${i}`, () => expect(i + %d).toBe(i + %d));\n", iteration, iteration)
+		content := fmt.Sprintf("import { expect, test } from '@rush/browser';\nfor (let i = 0; i < 100; i++) test(`rebuild ${i}`, () => expect(i + %d).toBe(i + %d));\n", iteration, iteration)
 		return os.WriteFile(entry, []byte(content), 0600)
 	}
 	if err := write(0); err != nil {

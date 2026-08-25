@@ -18,65 +18,13 @@ const runtimeHTML = `<!doctype html>
   const listeners = [];
   let collecting = false;
   let intentionalWait = 0;
-  let prefix = [];
-  let tests = [];
-  let beforeEachHooks = [];
-  let afterEachHooks = [];
   let baselineGlobals;
 
-  function fullName(name) { return [...prefix, name].join(" > "); }
-  function register(name, fn, mode = "run") { tests.push({name: fullName(name), fn, mode}); }
-  function test(name, fn) { register(name, fn); }
-  test.skip = (name, fn) => register(name, fn, "skip");
-  test.todo = name => register(name, null, "todo");
-  test.only = (name, fn) => register(name, fn, "only");
-  test.each = values => (name, fn) => values.forEach((value, index) => {
-    const args = Array.isArray(value) ? [...value] : [value];
-    register(name.replace(/%[sdifjo]/g, () => String(args.shift())), () => fn(...(Array.isArray(value) ? value : [value])));
-  });
-  function describe(name, fn) { prefix.push(name); try { fn(); } finally { prefix.pop(); } }
-  describe.skip = (name, fn) => { prefix.push(name); const start = tests.length; try { fn(); } finally { prefix.pop(); } for (let i = start; i < tests.length; i++) tests[i].mode = "skip"; };
-  describe.only = (name, fn) => { prefix.push(name); const start = tests.length; try { fn(); } finally { prefix.pop(); } for (let i = start; i < tests.length; i++) tests[i].mode = "only"; };
-
-  function serialize(value) {
-    if (typeof value === "string") return JSON.stringify(value);
-    try { return JSON.stringify(value); } catch (_) { return String(value); }
-  }
   function formatError(error) {
     if (!error) return String(error);
     const message = (error.name || "Error") + (error.message ? ": " + error.message : "");
     const stack = String(error.stack || "");
     return stack.startsWith(message) ? stack : message + (stack ? "\n" + stack : "");
-  }
-  function deepEqual(a, b) {
-    if (Object.is(a, b)) return true;
-    if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
-    const ak = Reflect.ownKeys(a), bk = Reflect.ownKeys(b);
-    return ak.length === bk.length && ak.every(k => bk.includes(k) && deepEqual(a[k], b[k]));
-  }
-  function expect(actual) {
-    const match = (pass, message, inverted = false) => {
-      if (inverted ? pass : !pass) throw new Error(message);
-    };
-    const make = inverted => ({
-      toBe(expected) { match(Object.is(actual, expected), "expected " + serialize(actual) + " to be " + serialize(expected), inverted); },
-      toEqual(expected) { match(deepEqual(actual, expected), "expected " + serialize(actual) + " to equal " + serialize(expected), inverted); },
-      toBeTruthy() { match(Boolean(actual), "expected " + serialize(actual) + " to be truthy", inverted); },
-      toBeFalsy() { match(!actual, "expected " + serialize(actual) + " to be falsy", inverted); },
-      toContain(expected) { match(actual != null && typeof actual.includes === "function" && actual.includes(expected), "expected value to contain " + serialize(expected), inverted); },
-      toBeNull() { match(actual === null, "expected " + serialize(actual) + " to be null", inverted); },
-      toBeDefined() { match(actual !== undefined, "expected value to be defined", inverted); },
-      toThrow(expected) {
-        let thrown = null;
-        try { actual(); } catch (error) { thrown = error; }
-        let pass = Boolean(thrown);
-        if (pass && expected instanceof RegExp) pass = expected.test(String(thrown && thrown.message || thrown));
-        if (pass && typeof expected === "string") pass = String(thrown && thrown.message || thrown).includes(expected);
-        match(pass, "expected function to throw", inverted);
-      },
-      get not() { return make(!inverted); },
-    });
-    return make(false);
   }
 
   EventTarget.prototype.addEventListener = function(type, listener, options) {
@@ -140,54 +88,33 @@ const runtimeHTML = `<!doctype html>
         }
       }
     }
-    tests = [];
-    beforeEachHooks = [];
-    afterEachHooks = [];
-    prefix = [];
     intentionalWait = 0;
   }
-
-  Object.assign(globalThis, {
-    test,
-    it: test,
-    describe,
-    expect,
-    beforeEach: fn => beforeEachHooks.push(fn),
-    afterEach: fn => afterEachHooks.push(fn),
-  });
 
   async function execute(id, filename, source) {
     clearState();
     const suiteStart = performance.now();
-    const results = [];
+    let results = [];
     let callbackWall = 0;
+    collecting = true;
     try {
       (0, eval)(source + "\n//# sourceURL=" + filename);
+      if (globalThis.__rushRegistration) await globalThis.__rushRegistration;
+      const api = globalThis.__rushBrowserModule;
+      if (!api || typeof api.run !== "function") {
+        throw new Error("suite bundle did not expose the @rush/browser runtime");
+      }
+      api.configureRuntime({});
+      const runResult = await api.run({emit: false});
+      results = runResult.tests.map(item => ({
+        name: item.fullName,
+        status: item.state,
+        duration_ms: item.durationMs,
+        ...(item.error ? {error: formatError(item.error)} : {}),
+      }));
+      callbackWall = runResult.tests.reduce((sum, item) => sum + item.durationMs, 0);
     } catch (error) {
       results.push({name: "suite registration", status: "failed", duration_ms: 0, error: formatError(error)});
-    }
-    const hasOnly = tests.some(item => item.mode === "only");
-    collecting = true;
-    for (const item of tests) {
-      if (item.mode === "todo" || item.mode === "skip" || (hasOnly && item.mode !== "only")) {
-        results.push({name: item.name, status: item.mode === "todo" ? "todo" : "skipped", duration_ms: 0});
-        continue;
-      }
-      const started = performance.now();
-      let failure = "";
-      try {
-        for (const hook of beforeEachHooks) await hook();
-        await item.fn();
-      } catch (error) {
-        failure = formatError(error);
-      } finally {
-        for (const hook of afterEachHooks) {
-          try { await hook(); } catch (error) { if (!failure) failure = formatError(error); }
-        }
-      }
-      const duration = performance.now() - started;
-      callbackWall += duration;
-      results.push({name: item.name, status: failure ? "failed" : "passed", duration_ms: duration, ...(failure ? {error: failure} : {})});
     }
     collecting = false;
     const total = performance.now() - suiteStart;

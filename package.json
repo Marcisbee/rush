@@ -1,5 +1,5 @@
 {
-  "name": "rush-webview-runner",
+  "name": "@rush/browser",
   "private": true,
   "type": "module",
   "exports": {
@@ -26,8 +26,11 @@
     "es-module-lexer": "^1.7.0"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.0",
     "jsdom": "^26.1.0",
     "preact": "^10.27.1",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   }

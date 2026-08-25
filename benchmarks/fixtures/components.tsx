@@ -1,4 +1,5 @@
 import {h, render} from "preact"
+import { expect, test } from "@rush/browser"
 
 function Counter({value}: {value: number}) {
   return <button aria-label="counter">{value}</button>
