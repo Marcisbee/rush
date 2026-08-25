@@ -56,6 +56,7 @@ Passing tests in one layer do not imply that another layer is integrated. The cu
 
 - The daemon remains alive until `rush stop`; pin the executable revision and stop old daemons after changing builds.
 - Headed and headless daemons are intentionally distinct.
+- On Linux, run trusted-input files with `RUSH_WEBVIEW_POOL_SIZE=1` in a separate invocation. Native X11 focus is process-global and is not isolated from concurrent pooled realm or session navigation.
 - WPE deployment must include matching helper processes and normal WebKit sandbox support; disabling the sandbox is not a supported configuration.
 - Performance results describe a host, engine, fixture, and repeat method. They are not universal latency guarantees for applications, networks, realtime coordination, or intentional waits.
 - The complete 1,169-test Kodē milestone remains unmeasured. Do not infer it from the 100-test representative proof.

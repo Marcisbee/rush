@@ -97,6 +97,8 @@ Use trusted input for:
 
 Do not use it merely to imitate a click. Native input can move the pointer, change focus, require permissions, and serialize otherwise fast work.
 
+On Linux, keep trusted-input files in a separate invocation with `RUSH_WEBVIEW_POOL_SIZE=1`. X11 focus is process-global, so concurrent pooled realm or session navigation can steal the active native target even though browser-only work remains safely parallel.
+
 Platform requirements differ:
 
 - Linux WebKitGTK uses XTest on the active X11 display; the CLI wires it through the explicit native API.

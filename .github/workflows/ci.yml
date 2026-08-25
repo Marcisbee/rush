@@ -62,6 +62,12 @@ jobs:
         run: make build
       - name: Verify native runtime
         run: ./bin/rush doctor
+      - name: Run trusted app automation
+        env:
+          RUSH_WEBVIEW_POOL_SIZE: 1
+        run: ./bin/rush test examples/app-automation.test.ts
+      - name: Stop serial native-input daemon
+        run: ./bin/rush stop
       - name: Run real-browser examples
         run: >-
           ./bin/rush test
@@ -69,7 +75,6 @@ jobs:
           examples/browser-api.test.ts
           examples/javascript.test.js
           examples/react.test.tsx
-          examples/app-automation.test.ts
           examples/session.test.ts
       - name: Measure product performance contract
         run: |

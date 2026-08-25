@@ -49,7 +49,7 @@ The current Linux CLI does not yet invoke the adapter-independent collector. The
 `.github/workflows/ci.yml` runs on every pull request and push to `main`:
 
 - `Go and browser API` installs pinned Go and Node toolchains, checks TypeScript, runs Vitest API tests, runs all Go tests, and repeats Go tests with the race detector.
-- `Linux WebKitGTK conformance and performance` installs the real WebKitGTK/Xvfb/XTest runtime, builds Rush, runs `doctor`, executes browser, app-automation, and isolated-session examples, and enforces the built-in benchmark targets.
+- `Linux WebKitGTK conformance and performance` installs the real WebKitGTK/Xvfb/XTest runtime, builds Rush, runs `doctor`, executes trusted app automation serially before the pooled browser and isolated-session examples, and enforces the built-in benchmark targets.
 - `Windows WebView2 adapter` runs the Windows Go packages and the real WebView2 harness for conformance, warm performance, trusted input, bridge batching, failure capture, and realm reuse.
 - The Linux job uploads raw benchmark JSON for 14 days even when the benchmark command misses a target.
 

@@ -29,7 +29,9 @@ npm ci
 make build
 ./bin/rush doctor
 ./bin/rush test examples/basic.test.ts examples/browser-api.test.ts
-./bin/rush test examples/app-automation.test.ts examples/session.test.ts
+RUSH_WEBVIEW_POOL_SIZE=1 ./bin/rush test examples/app-automation.test.ts
+./bin/rush stop
+./bin/rush test examples/session.test.ts
 ./bin/rush stop
 ```
 
@@ -107,7 +109,9 @@ go test ./...
 go test -race ./...
 make build
 ./bin/rush test examples/basic.test.ts examples/browser-api.test.ts examples/javascript.test.js examples/react.test.tsx
-./bin/rush test examples/app-automation.test.ts examples/session.test.ts
+RUSH_WEBVIEW_POOL_SIZE=1 ./bin/rush test examples/app-automation.test.ts
+./bin/rush stop
+./bin/rush test examples/session.test.ts
 ./bin/rush bench --repeat 5 --cold-repeat 3 --json
 swift test # macOS only
 ```
