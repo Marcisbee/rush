@@ -30,9 +30,9 @@ The follow-up prototype keeps three independent WebKitGTK realms warm under one 
 
 | Measurement | Samples (ms) | Median | Target | Verdict |
 | --- | --- | ---: | ---: | --- |
-| Vitest/jsdom fresh process | 1,612.6; 1,614.5; 1,650.4; 1,625.6; 1,622.1 | 1,622.1 ms | baseline | pass |
-| Rush, same 100 tests | 75.2; 68.5; 106.4; 102.8; 110.1 | 102.8 ms | at most 162.2 ms (10×) | **pass: 15.8×** |
-| Rush warm 100-test repeat | 129.5; 134.8; 147.8; 160.7; 157.7 | 147.8 ms | under 1,000 ms | **pass** |
+| Vitest/jsdom fresh process | 2,089.2; 2,035.5; 2,746.4; 1,995.3; 1,820.6 | 2,035.5 ms | baseline | pass |
+| Rush, same 100 tests | 82.9; 72.9; 109.0; 117.2; 111.4 | 109.0 ms | at most 203.6 ms (10×) | **pass: 18.7×** |
+| Rush warm 100-test repeat | 121.1; 147.9; 142.1; 166.6; 169.5 | 147.9 ms | under 1,000 ms | **pass** |
 
 All 100 tests passed in every sample. Files keep separate esbuild bundles, module graphs, registries, and mock runtimes. Each realm still performs the complete DOM, timer, listener, storage, cookie, performance-entry, and added-global reset before its next file.
 
