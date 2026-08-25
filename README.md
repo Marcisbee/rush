@@ -55,6 +55,8 @@ Each suite is bundled independently with `@rush/browser` and must import the API
 
 Automatic JSX uses React when the project declares React, Preact when it declares only Preact, and React otherwise. `RUSH_JSX_IMPORT_SOURCE` provides an explicit override. Bundles run with `process.env.NODE_ENV` set to `test` by default so framework testing APIs remain available; `RUSH_NODE_ENV` can override it.
 
+The runner supplies `@rush/browser` to external absolute suites from the project's installed dependency, its own adjacent `dist` directory, or `RUSH_BROWSER_MODULE` for custom package layouts. Consumer repositories do not need a temporary local package link when using a built Rush binary.
+
 Before the next suite, Rush clears the DOM, style nodes, timers, animation frames, registered event listeners, cookies, local and session storage, performance entries, and bundle globals. Bundle scoping supplies a fresh registry and mock runtime for every file. Rush does not yet provide a separate WebView realm per file, service-worker cleanup, native input, network interception, or app/session navigation in the Linux adapter.
 
 ## Timing model
