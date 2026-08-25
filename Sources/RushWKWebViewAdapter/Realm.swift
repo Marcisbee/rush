@@ -1,6 +1,6 @@
 import AppKit
 import Foundation
-import WebKit
+@preconcurrency import WebKit
 
 public struct RealmLease: Hashable, Sendable {
     public let realmID: UUID
@@ -27,7 +27,15 @@ public final class WKWebViewRealm {
 
     @discardableResult
     public func evaluateJavaScript(_ source: String) async throws -> Any? {
-        try await webView.evaluateJavaScript(source)
+        try await withCheckedThrowingContinuation { continuation in
+            webView.evaluateJavaScript(source) { result, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: result)
+                }
+            }
+        }
     }
 
     public func load(_ request: URLRequest) async throws {

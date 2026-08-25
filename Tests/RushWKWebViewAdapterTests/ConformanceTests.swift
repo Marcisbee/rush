@@ -13,13 +13,14 @@ final class ConformanceTests: XCTestCase {
 
         let lease = try await adapter.acquireRealm()
         let realm = try adapter.realm(for: lease)
-        try await realm.evaluateJavaScript(
+        let result = try await realm.evaluateJavaScript(
             """
             __rushBridge.emit('assertion', { passed: true });
             __rushBridge.emit('result', { tests: 1 });
             __rushBridge.flush();
             """
         )
+        XCTAssertNil(result, "JavaScript undefined must bridge to nil without trapping")
 
         let batch = await adapter.mailbox.nextBatch()
         XCTAssertEqual(batch.realmID, lease.realmID)
