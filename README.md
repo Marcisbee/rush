@@ -4,7 +4,17 @@ Rush is a persistent WebView-native JavaScript and TypeScript test runner. This 
 
 The repository is under active development. The `@rush/browser` package contains the public, Vitest-compatible API that executes inside a real browser page. Native hosts provide navigation, isolated sessions, and trusted input through explicit adapters; ordinary assertions, queries, mocks, timers, snapshots, and synthetic interactions stay in the page.
 
-## macOS WKWebView adapter
+## Native adapters
+
+### Windows WebView2
+
+The Windows adapter is implemented in `platform/webview2`. It keeps WebView2 controllers warm, leases reusable browser realms from a bounded pool, batches page bridge messages, captures rendered PNG and DOM failure artifacts, and exposes trusted Windows mouse and keyboard automation separately from fast synthetic page events.
+
+Normal Windows runs use a hidden, off-screen host window. Debug mode shows the host and opens WebView2 DevTools. See [Windows WebView2 setup and validation](docs/windows-webview2.md).
+
+The adapter-independent browser conformance and warm performance workloads live in `harness`, so other native adapters can run the same checks.
+
+### macOS WKWebView
 
 `RushWKWebViewAdapter` hosts a reusable pool of real `WKWebView` realms. Normal runs leave the views unattached to a window. Debug runs attach each realm to a visible window and mark it inspectable, so it appears in Safari's Develop menu on macOS 13.3 and newer.
 
@@ -19,7 +29,7 @@ The checked-in Go dependency embeds the small native WebView adapter, but the op
 Debian or Ubuntu:
 
 ```sh
-sudo apt-get install libwebkit2gtk-4.1-0 libgtk-3-0 xvfb xauth
+sudo apt-get install libwebkit2gtk-4.1-0 libgtk-3-0 libxtst6 xvfb xauth
 ```
 
 Ubuntu releases using the 64-bit time ABI may name GTK's runtime package `libgtk-3-0t64`; installing `libwebkit2gtk-4.1-0` normally resolves the right GTK package automatically.
@@ -27,7 +37,7 @@ Ubuntu releases using the 64-bit time ABI may name GTK's runtime package `libgtk
 Fedora:
 
 ```sh
-sudo dnf install webkit2gtk4.1 gtk3 xorg-x11-server-Xvfb xorg-x11-xauth
+sudo dnf install webkit2gtk4.1 gtk3 libXtst xorg-x11-server-Xvfb xorg-x11-xauth
 ```
 
 Build and install the fixture dependency:
@@ -73,7 +83,33 @@ Automatic JSX uses React when the project declares React, Preact when it declare
 
 The runner supplies `@rush/browser` to external absolute suites from the project's installed dependency, its own adjacent `dist` directory, or `RUSH_BROWSER_MODULE` for custom package layouts. Consumer repositories do not need a temporary local package link when using a built Rush binary.
 
-Before the next suite assigned to a realm, Rush clears the DOM, style nodes, timers, animation frames, registered event listeners, cookies, local and session storage, performance entries, and bundle globals. Bundle scoping supplies a fresh registry and mock runtime for every file. Rush does not allocate a dedicated WebView for every file and does not yet provide service-worker cleanup, native input, network interception, or app/session navigation in the Linux adapter.
+Before the next suite assigned to a realm, Rush clears the DOM, style nodes, timers, animation frames, registered event listeners, cookies, local and session storage, IndexedDB databases, Cache Storage, service-worker registrations, performance entries, and bundle globals. Bundle scoping supplies a fresh registry and mock runtime for every file. Rush does not allocate a dedicated WebView for every file.
+
+## Application automation
+
+`test.app` creates a fresh application iframe for each test while the controller document and native bridge stay alive. `goto` performs a real WebKit document navigation through Rush's loopback application proxy. The proxy keeps the application document same-origin with the controller so Testing Library locators and fast synthetic interactions continue to run in-page. Absolute and relative HTTP requests are forwarded to the requested application origin.
+
+```ts
+import {expect, native, test} from "@rush/browser"
+
+test.app("signs in", async ({goto, network, page}) => {
+  network.route("**/api/session", route => route.fulfill({
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({user: "Ada"}),
+  }))
+  const request = network.waitForRequest("**/api/session")
+
+  await goto("http://127.0.0.1:3000/sign-in")
+  await native.type(page.getByRole("textbox", {name: "Email"}), "ada@example.test")
+  page.getByRole("button", {name: "Continue"}).click()
+
+  expect((await request).method).toBe("POST")
+})
+```
+
+`network.route` accepts exact URLs, glob strings, regular expressions, or request predicates. A handler can fulfill with a mocked response, continue with request overrides, or abort. `network.requests` and `network.waitForRequest` expose immutable request records for inspection. Routes and records belong to one app test and are discarded with its realm.
+
+Locator `click`, `fill`, `type`, and `press` remain fast synthetic DOM interactions. `native.click`, `native.type`, and `native.press` are the explicit trusted-input path. The Linux adapter sends those events through XTest on the daemon's authenticated X11 display; it never falls back to synthetic events. Application proxy time is attributed to `network`, completed timer delays to `intentional wait`, callback work after those deductions to `application`, and orchestration outside callbacks to `runner`.
 
 ## Timing model
 
