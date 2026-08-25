@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/moxcomic/go-webview"
-	_ "github.com/moxcomic/go-webview/embedded"
 )
 
 type Browser struct {
@@ -55,7 +54,7 @@ func NewBrowser(headed bool) (*Browser, error) {
 	view, err := webview.New(headed)
 	if err != nil {
 		_ = harnessServer.Close()
-		return nil, fmt.Errorf("WebKitGTK is unavailable: %w", err)
+		return nil, fmt.Errorf("%s is unavailable: %w", BackendName(), err)
 	}
 	browser := &Browser{
 		view:     view,
@@ -95,7 +94,7 @@ func NewBrowser(headed bool) (*Browser, error) {
 		view.Destroy()
 		return nil, fmt.Errorf("bind session disposal bridge: %w", err)
 	}
-	view.SetTitle("Rush — WebKitGTK")
+	view.SetTitle("Rush — " + BackendName())
 	view.SetSize(1280, 800, webview.HintNone)
 	view.Navigate("http://" + listener.Addr().String() + "/")
 	return browser, nil
