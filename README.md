@@ -2,6 +2,8 @@
 
 Rush is a persistent WebView-native JavaScript and TypeScript test runner. This repository currently contains the first Linux proof: a native Go daemon keeps WebKitGTK and incremental esbuild contexts alive between CLI runs, while tests register and execute inside the page.
 
+The repository is under active development. The `@rush/browser` package contains the public, Vitest-compatible API that executes inside a real browser page. Native hosts provide navigation, isolated sessions, and trusted input through explicit adapters; ordinary assertions, queries, mocks, timers, snapshots, and synthetic interactions stay in the page.
+
 ## Linux prerequisites
 
 The checked-in Go dependency embeds the small native WebView adapter, but the operating system must provide GTK 3, WebKitGTK 4.1, and Xvfb. Rush reports the native loader error and names WebKitGTK when those libraries are absent.
@@ -42,7 +44,7 @@ Headless mode launches an authenticated Xvfb display and keeps it alive with the
 
 Each suite is bundled independently. Before the next suite, Rush clears the DOM, style nodes, timers, animation frames, registered event listeners, cookies, local and session storage, performance entries, hooks, and test registrations. Bundle scoping isolates top-level variables. This prototype does not yet provide a separate WebView realm per file, service-worker cleanup, native input, network interception, or the complete Vitest-compatible API.
 
-The current in-page API deliberately covers the proof's registration and assertion seam: `test`/`it`, `describe`, `beforeEach`, `afterEach`, `skip`, `only`, `todo`, `each`, and common `expect` matchers. The broader compatibility API belongs to the follow-on runtime work.
+The Linux proof currently embeds its registration and assertion seam. The `@rush/browser` package provides the broader compatibility API; wiring that package into the native builder replaces this prototype seam in the next integration step.
 
 ## Timing model
 
