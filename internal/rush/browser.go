@@ -2,6 +2,7 @@ package rush
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -21,8 +22,19 @@ type Browser struct {
 	ready          chan struct{}
 	once           sync.Once
 	mu             sync.Mutex
-	pending        map[string]chan SuiteResult
+	pending        map[string]chan browserBatchResult
 	routes         map[string]chan AppHTTPResponse
+	compiled       map[string]bool
+	compileOrder   []string
+}
+
+const browserBundleCacheLimit = 64
+
+type browserBatchResult struct {
+	Suites         []SuiteResult `json:"suites"`
+	CompiledHashes []string      `json:"compiled_hashes,omitempty"`
+	BrowserMS      float64       `json:"browser_ms"`
+	ReportingMS    float64       `json:"reporting_ms"`
 }
 
 const browserControllerPath = "/__rush/controller"
@@ -63,8 +75,9 @@ func NewBrowser(headed bool) (*Browser, error) {
 		nativeInput:    input,
 		nativeInputErr: inputErr,
 		ready:          make(chan struct{}),
-		pending:        make(map[string]chan SuiteResult),
+		pending:        make(map[string]chan browserBatchResult),
 		routes:         make(map[string]chan AppHTTPResponse),
+		compiled:       make(map[string]bool),
 	}
 	proxy.decide = browser.decideRequest
 	proxy.complete = browser.networkComplete
@@ -112,9 +125,40 @@ func (b *Browser) Close() {
 }
 
 func (b *Browser) Run(ctx context.Context, id, filename, source string) (SuiteResult, error) {
-	result := make(chan SuiteResult, 1)
+	digest := sha256.Sum256([]byte(source))
+	batch, err := b.RunBatch(ctx, id, []BuiltSuite{{File: filename, Source: source, Hash: fmt.Sprintf("%x", digest)}})
+	if err != nil {
+		return SuiteResult{}, err
+	}
+	if len(batch.Suites) != 1 {
+		return SuiteResult{}, fmt.Errorf("browser returned %d suites for one input", len(batch.Suites))
+	}
+	return batch.Suites[0], nil
+}
+
+func (b *Browser) RunBatch(ctx context.Context, id string, bundles []BuiltSuite) (browserBatchResult, error) {
+	result := make(chan browserBatchResult, 1)
 	b.mu.Lock()
 	b.pending[id] = result
+	known := make(map[string]bool, len(b.compiled))
+	for hash := range b.compiled {
+		known[hash] = true
+	}
+	order := append([]string(nil), b.compileOrder...)
+	payload := make([]BuiltSuite, len(bundles))
+	for index, bundle := range bundles {
+		payload[index] = bundle
+		if known[bundle.Hash] {
+			payload[index].Source = ""
+			continue
+		}
+		if len(order) >= browserBundleCacheLimit {
+			delete(known, order[0])
+			order = order[1:]
+		}
+		known[bundle.Hash] = true
+		order = append(order, bundle.Hash)
+	}
 	b.mu.Unlock()
 	defer func() {
 		b.mu.Lock()
@@ -123,23 +167,44 @@ func (b *Browser) Run(ctx context.Context, id, filename, source string) (SuiteRe
 	}()
 
 	idJSON, _ := json.Marshal(id)
-	fileJSON, _ := json.Marshal(filename)
-	sourceJSON, _ := json.Marshal(source)
-	script := fmt.Sprintf("window.__rush.execute(%s,%s,%s)", idJSON, fileJSON, sourceJSON)
+	payloadJSON, _ := json.Marshal(payload)
+	script := fmt.Sprintf("window.__rush.executeBatch(%s,%s)", idJSON, payloadJSON)
 	b.view.Dispatch(func() { b.view.Eval(script) })
 
 	select {
-	case suite := <-result:
-		return suite, nil
+	case batch := <-result:
+		b.rememberCompiled(payload, batch.CompiledHashes)
+		return batch, nil
 	case <-ctx.Done():
-		return SuiteResult{}, ctx.Err()
+		return browserBatchResult{}, ctx.Err()
+	}
+}
+
+func (b *Browser) rememberCompiled(bundles []BuiltSuite, compiledHashes []string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	compiled := make(map[string]bool, len(compiledHashes))
+	for _, hash := range compiledHashes {
+		compiled[hash] = true
+	}
+	for _, bundle := range bundles {
+		if bundle.Source == "" || b.compiled[bundle.Hash] || !compiled[bundle.Hash] {
+			continue
+		}
+		if len(b.compileOrder) >= browserBundleCacheLimit {
+			oldest := b.compileOrder[0]
+			b.compileOrder = b.compileOrder[1:]
+			delete(b.compiled, oldest)
+		}
+		b.compiled[bundle.Hash] = true
+		b.compileOrder = append(b.compileOrder, bundle.Hash)
 	}
 }
 
 func (b *Browser) receive(raw string) {
 	var payload struct {
 		ID string `json:"id"`
-		SuiteResult
+		browserBatchResult
 	}
 	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
 		return
@@ -148,7 +213,7 @@ func (b *Browser) receive(raw string) {
 	result := b.pending[payload.ID]
 	b.mu.Unlock()
 	if result != nil {
-		result <- payload.SuiteResult
+		result <- payload.browserBatchResult
 	}
 }
 
@@ -228,6 +293,9 @@ func (b *Browser) sendNativeInput(raw string) error {
 		if result.err != nil {
 			return result.err
 		}
+		// Give the window manager a moment to apply the GTK focus request before
+		// XTest targets the now-active pooled realm.
+		time.Sleep(10 * time.Millisecond)
 		request.X += result.x
 		request.Y += result.y
 	}

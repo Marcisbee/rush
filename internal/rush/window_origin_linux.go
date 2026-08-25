@@ -18,6 +18,8 @@ var gtkGeometry struct {
 	gdk  uintptr
 
 	binChild             func(uintptr) uintptr
+	windowPresent        func(uintptr)
+	widgetGrabFocus      func(uintptr)
 	widgetWindow         func(uintptr) uintptr
 	translateCoordinates func(uintptr, uintptr, int32, int32, *int32, *int32) int32
 	windowOrigin         func(uintptr, *int32, *int32) int32
@@ -42,8 +44,14 @@ func nativeContentOrigin(window unsafe.Pointer) (float64, float64, error) {
 	}
 	child := gtkGeometry.binChild(widget)
 	if child == 0 {
+		gtkGeometry.windowPresent(widget)
 		return float64(rootX), float64(rootY), nil
 	}
+	// XTest delivers input to the active native window. A pooled headless run
+	// keeps several overlapping GTK windows mapped, so explicitly raise the
+	// realm that requested trusted input and focus its WebView child.
+	gtkGeometry.windowPresent(widget)
+	gtkGeometry.widgetGrabFocus(child)
 	var childX, childY int32
 	if gtkGeometry.translateCoordinates(child, widget, 0, 0, &childX, &childY) == 0 {
 		return 0, 0, errors.New("resolve trusted input WebView origin")
@@ -66,6 +74,8 @@ func loadGTKGeometry() {
 	gtkGeometry.gtk = gtk
 	gtkGeometry.gdk = gdk
 	purego.RegisterLibFunc(&gtkGeometry.binChild, gtk, "gtk_bin_get_child")
+	purego.RegisterLibFunc(&gtkGeometry.windowPresent, gtk, "gtk_window_present")
+	purego.RegisterLibFunc(&gtkGeometry.widgetGrabFocus, gtk, "gtk_widget_grab_focus")
 	purego.RegisterLibFunc(&gtkGeometry.widgetWindow, gtk, "gtk_widget_get_window")
 	purego.RegisterLibFunc(&gtkGeometry.translateCoordinates, gtk, "gtk_widget_translate_coordinates")
 	purego.RegisterLibFunc(&gtkGeometry.windowOrigin, gdk, "gdk_window_get_origin")

@@ -16,6 +16,8 @@ const runtimeHTML = `<!doctype html>
   };
   const timerHandles = new Map();
   const listeners = [];
+  const compiledBundles = new Map();
+  const bundleCacheLimit = 64;
   const appRealms = new Map();
   let appSequence = 0;
   let nativeNetwork = 0;
@@ -327,14 +329,32 @@ const runtimeHTML = `<!doctype html>
     nativeNetwork = 0;
   }
 
-  async function execute(id, filename, source) {
+  function bundleFactory(hash, source) {
+    let factory = compiledBundles.get(hash);
+    if (factory) return factory;
+    if (!source) throw new Error("compiled bundle cache miss for " + hash);
+    factory = new Function(source);
+    if (compiledBundles.size >= bundleCacheLimit) {
+      compiledBundles.delete(compiledBundles.keys().next().value);
+    }
+    compiledBundles.set(hash, factory);
+    return factory;
+  }
+
+  async function executeSuite(bundle) {
+    const resetStart = performance.now();
     await clearState();
+    const reset = performance.now() - resetStart;
     const suiteStart = performance.now();
     let results = [];
     let callbackWall = 0;
+    let compile = 0;
     collecting = true;
     try {
-      (0, eval)(source + "\n//# sourceURL=" + filename);
+      const compileStart = performance.now();
+      const factory = bundleFactory(bundle.hash, bundle.source);
+      compile = performance.now() - compileStart;
+      factory();
       if (globalThis.__rushRegistration) await globalThis.__rushRegistration;
       const api = globalThis.__rushBrowserModule;
       if (!api || typeof api.run !== "function") {
@@ -357,12 +377,13 @@ const runtimeHTML = `<!doctype html>
     const network = nativeNetwork + performance.getEntriesByType("resource").reduce((sum, entry) => sum + entry.duration, 0);
     const application = Math.max(0, callbackWall - intentionalWait - network);
     const runner = Math.max(0, total - callbackWall);
-    const payload = {
-      id,
-      file: filename,
+    return {
+      file: bundle.file,
       tests: results,
       timing: {
         build_ms: 0,
+        compile_ms: compile,
+        reset_ms: reset,
         runner_ms: runner,
         application_ms: application,
         network_ms: network,
@@ -370,14 +391,29 @@ const runtimeHTML = `<!doctype html>
         total_ms: total,
       },
     };
-    await window.__rushReport(JSON.stringify(payload));
+  }
+
+  async function executeBatch(id, bundles) {
+    const batchStart = performance.now();
+    const suites = [];
+    for (const bundle of bundles) suites.push(await executeSuite(bundle));
+    const browserMS = performance.now() - batchStart;
+    const compiledHashes = bundles.filter(bundle => compiledBundles.has(bundle.hash)).map(bundle => bundle.hash);
+    const reportingStart = performance.now();
+    const suitesJSON = JSON.stringify(suites);
+    const reporting = performance.now() - reportingStart;
+    await window.__rushReport('{"id":' + JSON.stringify(id) + ',"suites":' + suitesJSON + ',"compiled_hashes":' + JSON.stringify(compiledHashes) + ',"browser_ms":' + browserMS + ',"reporting_ms":' + reporting + '}');
+  }
+
+  async function execute(id, filename, source) {
+    await executeBatch(id, [{file: filename, source, hash: "legacy-" + source.length}]);
   }
 
   function networkComplete(_realm, duration) {
     if (collecting) nativeNetwork += Math.max(0, Number(duration) || 0);
   }
 
-  window.__rush = {execute, handleRequest, networkComplete};
+  window.__rush = {execute, executeBatch, handleRequest, networkComplete};
   baselineGlobals = new Set(Reflect.ownKeys(globalThis));
   window.__rushReady();
 })();

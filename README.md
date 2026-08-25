@@ -75,13 +75,15 @@ The WPE binary is deliberately headless-only. Use the default WebKitGTK build fo
 
 Headless mode launches an authenticated Xvfb display and keeps it alive with the daemon. Headed mode requires an existing `DISPLAY` or `WAYLAND_DISPLAY`, uses a separate warm daemon, and enables the WebView debug flag. The daemon and its esbuild contexts remain warm across later invocations until `rush stop` is called.
 
-Each suite is bundled independently with `@rush/browser` and must import the APIs it uses. The WebKit harness executes the package's shared registry and maps its batched results onto the native protocol. Assertions, Testing Library queries, mocks, spies, fake timers, snapshots, and synthetic interactions therefore run in the real browser page instead of a duplicate embedded test implementation.
+Headless runs keep up to three independent WebView realms warm by default, bounded by the Go process's available parallelism. `RUSH_WEBVIEW_POOL_SIZE` can select from one through four realms; the headed default is one so debugging does not open a bank of windows. The fixed realm bound and each realm's 64-factory cache cap prevent suite count from creating an unbounded number of WebViews or retained compiled bundles.
+
+Each suite remains an independent IIFE with its own module graph and must import the APIs it uses. Rush traverses all requested suites in one esbuild batch, validates the complete recorded input graph before reusing unchanged output, and assigns files deterministically across the bounded realm pool. Each realm receives one batched bridge call, caches compiled factories by content hash, invokes a fresh factory, and performs a full browser reset for every file. Assertions, Testing Library queries, mocks, spies, fake timers, snapshots, and synthetic interactions therefore run concurrently in real browser pages without sharing application module state between files.
 
 Automatic JSX uses React when the project declares React, Preact when it declares only Preact, and React otherwise. `RUSH_JSX_IMPORT_SOURCE` provides an explicit override. Bundles run with `process.env.NODE_ENV` set to `test` by default so framework testing APIs remain available; `RUSH_NODE_ENV` can override it.
 
 The runner supplies `@rush/browser` to external absolute suites from the project's installed dependency, its own adjacent `dist` directory, or `RUSH_BROWSER_MODULE` for custom package layouts. Consumer repositories do not need a temporary local package link when using a built Rush binary.
 
-Before the next suite, Rush clears the DOM, style nodes, timers, animation frames, registered event listeners, cookies, local and session storage, IndexedDB databases, Cache Storage, service-worker registrations, performance entries, and bundle globals. Bundle scoping supplies a fresh registry and mock runtime for every file. Rush does not yet provide a separate WebView realm per file.
+Before the next suite assigned to a realm, Rush clears the DOM, style nodes, timers, animation frames, registered event listeners, cookies, local and session storage, IndexedDB databases, Cache Storage, service-worker registrations, performance entries, and bundle globals. Bundle scoping supplies a fresh registry and mock runtime for every file. Rush does not allocate a dedicated WebView for every file.
 
 ## Application automation
 
@@ -120,6 +122,8 @@ Normal and JSON output report these measurements separately:
 - `intentional wait`: requested delays for timers that fired while a test was executing.
 - `page total`: registration plus test execution inside WebKit.
 
+JSON output also includes a request-level `profile`: `browser_realms` is the fixed pool size, `bundle` is the actual esbuild rebuild, `native_host` is Go orchestration outside the build and browser round trip, `bridge` is native dispatch and result transfer, `browser_execution` is the longest concurrent in-page realm batch, `test_execution` is the sum of the individual suite totals, `reset` is browser cleanup between files, and `reporting` is the longest browser-side result serialization. CLI process overhead is the caller-observed process wall time minus `wall_ms`.
+
 Network requests and timers can overlap, so the phase values are attribution signals rather than an accounting identity. Host build time is never folded into page time.
 
 ## Reproducible benchmarks
@@ -146,7 +150,7 @@ All raw samples, phase medians, measurement definitions, targets, and pass/fail 
 
 ## Architecture
 
-The CLI connects to a mode-specific Unix socket under the user's cache directory. If needed, it starts the Go daemon and waits on a dedicated readiness pipe. The daemon owns one WebKitGTK event loop and a cache of esbuild `BuildContext` instances keyed by absolute suite path. Requests are serialized through the page, results cross the native bridge once per suite, and a per-suite timeout bounds a hung page.
+The CLI connects to an executable- and mode-specific Unix socket under the user's cache directory. Scoping by executable path prevents another checkout or incompatible build from silently answering a run. If needed, the CLI starts the Go daemon and waits on a dedicated readiness pipe. The daemon owns one WebKitGTK event loop, a bounded pool of independent WebViews, and esbuild `BuildContext` instances cached by ordered suite set and build configuration. Requests are serialized at the daemon boundary; independently compiled files execute concurrently across stable realm assignments and sequentially within each realm, with a full reset between files.
 
 The Unix socket and log are user-only. Xvfb normally uses its local Unix socket. In read-only WSL/container environments where `/tmp/.X11-unix` lacks the required sticky bit, Rush falls back to a loopback TCP display protected by a generated Xauthority cookie.
 

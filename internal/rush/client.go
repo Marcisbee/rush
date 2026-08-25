@@ -2,6 +2,7 @@ package rush
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,8 +22,17 @@ func SocketPath(headed bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	executable, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	executable, err = filepath.Abs(executable)
+	if err != nil {
+		return "", err
+	}
+	identity := sha256.Sum256([]byte(executable))
 	mode := backendSocketMode(headed)
-	return filepath.Join(cache, "rush", "daemon-"+mode+".sock"), nil
+	return filepath.Join(cache, "rush", fmt.Sprintf("daemon-%x-%s.sock", identity[:6], mode)), nil
 }
 
 func Send(request Request, headed bool) (Response, error) {
