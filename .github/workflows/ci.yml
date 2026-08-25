@@ -111,4 +111,4 @@ jobs:
       - name: Test Windows host packages
         run: go test ./platform/webview2 ./harness
       - name: Run real WebView2 conformance harness
-        run: go run ./cmd/rush-webview2-harness -repeats 5
+        run: go run ./cmd/rush-webview2-harness -repeats 5 -trusted-input=false

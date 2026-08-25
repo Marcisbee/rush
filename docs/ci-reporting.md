@@ -50,7 +50,7 @@ The current Linux CLI does not yet invoke the adapter-independent collector. The
 
 - `Go and browser API` installs pinned Go and Node toolchains, checks TypeScript, runs Vitest API tests, runs all Go tests, and repeats Go tests with the race detector.
 - `Linux WebKitGTK conformance and performance` installs the real WebKitGTK/Xvfb/XTest runtime, builds Rush, runs `doctor`, executes trusted app automation serially before the pooled browser and isolated-session examples, and enforces the built-in benchmark targets.
-- `Windows WebView2 adapter` runs the Windows Go packages and the real WebView2 harness for conformance, warm performance, trusted input, bridge batching, failure capture, and realm reuse.
+- `Windows WebView2 adapter` runs the Windows Go packages and the real WebView2 harness for conformance, warm performance, bridge batching, failure capture, and realm reuse. Trusted `SendInput` remains a separate interactive-desktop validation because hosted runners do not provide reliable keyboard focus.
 - The Linux job uploads raw benchmark JSON for 14 days even when the benchmark command misses a target.
 
 `.github/workflows/macos-adapter.yml` runs `swift test` on macOS for Swift adapter changes and on pushes to `main` that touch the adapter. It validates hidden WKWebView conformance and its performance harness.

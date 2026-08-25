@@ -18,6 +18,7 @@ func main() {
 	debug := flag.Bool("debug", false, "show WebView2 and open DevTools")
 	repeats := flag.Int("repeats", 10, "warm performance repeat count")
 	artifacts := flag.String("artifacts", ".rush/harness-artifacts", "failure artifact directory")
+	trustedInputEnabled := flag.Bool("trusted-input", true, "require trusted mouse and keyboard input on an interactive desktop")
 	flag.Parse()
 	mode := webview2.ModeHidden
 	if *debug {
@@ -37,9 +38,12 @@ func main() {
 	progress("performance")
 	performance, err := harness.RunPerformance(ctx, realm, *repeats)
 	fatalIf(err)
-	progress("trusted input")
-	trusted, err := runTrustedInput(ctx, realm)
-	fatalIf(err)
+	trusted := trustedResult{}
+	if *trustedInputEnabled {
+		progress("trusted input")
+		trusted, err = runTrustedInput(ctx, realm)
+		fatalIf(err)
+	}
 	progress("bridge batching")
 	bridge, err := runBridge(ctx, realm, host.Batches())
 	fatalIf(err)
@@ -65,7 +69,7 @@ func main() {
 	}{conformance, performance, trusted, bridge, reusePassed, host.Stats(), artifactsResult}
 	encoded, _ := json.MarshalIndent(result, "", "  ")
 	fmt.Println(string(encoded))
-	if !trusted.Passed() || bridge != 10 || !reusePassed || !performance.Assertions.Passed || !performance.DOM.Passed {
+	if (*trustedInputEnabled && !trusted.Passed()) || bridge != 10 || !reusePassed || !performance.Assertions.Passed || !performance.DOM.Passed {
 		os.Exit(1)
 	}
 }
