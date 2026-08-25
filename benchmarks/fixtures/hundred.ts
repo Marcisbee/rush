@@ -1,3 +1,5 @@
+import { expect, test } from "@rush/browser"
+
 for (let index = 0; index < 100; index++) {
   test(`representative mix ${index}`, async () => {
     const input = document.createElement("input")

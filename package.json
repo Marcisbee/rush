@@ -1,5 +1,5 @@
 {
-  "name": "rush-webview-runner",
+  "name": "@rush/browser",
   "private": true,
   "type": "module",
   "exports": {

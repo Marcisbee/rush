@@ -1,3 +1,5 @@
+import { expect, test } from "@rush/browser"
+
 test("executes JavaScript in WebKitGTK", () => {
   const element = document.createElement("output")
   element.textContent = "JavaScript"

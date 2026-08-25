@@ -3,7 +3,11 @@ package rush
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,9 +42,40 @@ func (b *Builder) Build(cwd, name string) (string, float64, error) {
 
 	cached, ok := b.contexts[abs]
 	if !ok {
+		entry := fmt.Sprintf(
+			"import * as __rushBrowser from \"@rush/browser\";\nimport %s;\nglobalThis.__rushBrowserModule = __rushBrowser;\n",
+			strconv.Quote(filepath.ToSlash(abs)),
+		)
+		hoistPlugin := api.Plugin{
+			Name: "rush-hoisted-mocks",
+			Setup: func(build api.PluginBuild) {
+				build.OnLoad(api.OnLoadOptions{Filter: "^" + regexp.QuoteMeta(filepath.ToSlash(abs)) + "$", Namespace: "file"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
+					source, readErr := os.ReadFile(args.Path)
+					if readErr != nil {
+						return api.OnLoadResult{}, readErr
+					}
+					transformed, transformErr := transformHoistedMocks(string(source))
+					if transformErr != nil {
+						return api.OnLoadResult{}, transformErr
+					}
+					loader := loaderForPath(args.Path)
+					return api.OnLoadResult{
+						Contents:   &transformed,
+						Loader:     loader,
+						ResolveDir: filepath.Dir(args.Path),
+						WatchFiles: []string{args.Path},
+					}, nil
+				})
+			},
+		}
 		ctx, ctxErr := api.Context(api.BuildOptions{
-			AbsWorkingDir:   cwd,
-			EntryPoints:     []string{abs},
+			AbsWorkingDir: cwd,
+			Stdin: &api.StdinOptions{
+				Contents:   entry,
+				ResolveDir: cwd,
+				Sourcefile: "rush-native-entry.js",
+				Loader:     api.LoaderJS,
+			},
 			Bundle:          true,
 			Write:           false,
 			Format:          api.FormatIIFE,
@@ -50,6 +85,12 @@ func (b *Builder) Build(cwd, name string) (string, float64, error) {
 			JSXImportSource: "preact",
 			Sourcemap:       api.SourceMapInline,
 			LogLevel:        api.LogLevelSilent,
+			NodePaths:       []string{filepath.Join(cwd, "node_modules")},
+			External:        []string{"util"},
+			Plugins:         []api.Plugin{hoistPlugin},
+			Define: map[string]string{
+				"process.env.NODE_ENV": "\"production\"",
+			},
 		})
 		if ctxErr != nil {
 			return "", 0, errors.New(ctxErr.Error())
@@ -68,6 +109,19 @@ func (b *Builder) Build(cwd, name string) (string, float64, error) {
 		return "", elapsed, fmt.Errorf("esbuild returned %d output files for %s", len(result.OutputFiles), name)
 	}
 	return string(result.OutputFiles[0].Contents), elapsed, nil
+}
+
+func loaderForPath(path string) api.Loader {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".js", ".mjs", ".cjs":
+		return api.LoaderJS
+	case ".jsx":
+		return api.LoaderJSX
+	case ".tsx":
+		return api.LoaderTSX
+	default:
+		return api.LoaderTS
+	}
 }
 
 func (b *Builder) Close() {
