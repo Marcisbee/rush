@@ -15,7 +15,7 @@ public final class WKWebViewRealm {
     public let webView: WKWebView
 
     let navigator: NavigationObserver
-    private(set) var generation: UInt64 = 0
+    var generation: UInt64 = 0
     var sessionID: String?
     var isBusy = false
 
@@ -46,7 +46,7 @@ public final class WKWebViewRealm {
 }
 
 @MainActor
-final class NavigationObserver: NSObject, WKNavigationDelegate {
+final class NavigationObserver: NSObject, @preconcurrency WKNavigationDelegate {
     private struct Pending {
         let navigation: WKNavigation
         let continuation: CheckedContinuation<Void, Error>

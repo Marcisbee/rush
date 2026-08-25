@@ -93,14 +93,6 @@ public final class RushWKWebViewAdapter {
         self.mailbox = BridgeMailbox()
     }
 
-    deinit {
-        for realm in realms {
-            realm.webView.configuration.userContentController.removeScriptMessageHandler(
-                forName: configuration.bridgeHandlerName
-            )
-        }
-    }
-
     public func start() async throws {
         guard realms.isEmpty else { return }
         guard !stopped else { throw WKWebViewAdapterError.adapterAlreadyStopped }
