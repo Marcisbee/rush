@@ -1,49 +1,112 @@
 # Rush
 
-Rush is a persistent WebView-native JavaScript and TypeScript test runner focused on extreme performance.
+Rush is a persistent WebView-native JavaScript and TypeScript test runner. This repository currently contains the first Linux proof: a native Go daemon keeps WebKitGTK and incremental esbuild contexts alive between CLI runs, while tests register and execute inside the page.
+
+The repository is under active development. The `@rush/browser` package contains the public, Vitest-compatible API that executes inside a real browser page. Native hosts provide navigation, isolated sessions, and trusted input through explicit adapters; ordinary assertions, queries, mocks, timers, snapshots, and synthetic interactions stay in the page.
 
 ## macOS WKWebView adapter
 
 `RushWKWebViewAdapter` hosts a reusable pool of real `WKWebView` realms. Normal runs leave the views unattached to a window. Debug runs attach each realm to a visible window and mark it inspectable, so it appears in Safari's Develop menu on macOS 13.3 and newer.
 
-The adapter injects `globalThis.__rushBridge` at document start. Calls to `emit(type, payload)` are queued in the page and delivered to Swift as one `BridgeBatch` per microtask instead of one native message per assertion. Acquiring a named session preserves its JavaScript realm until `releaseSession`; transient leases remove namespaced Rush storage and navigate back to a clean document before returning to the pool. Each realm has a process-lifetime, non-persistent website data store while all realms share a warm WebKit process pool.
+The adapter batches page bridge calls once per microtask, preserves named sessions, resets transient realms, and shares a warm WebKit process pool. Failure capture writes PNG, DOM, and metadata artifacts. Trusted Core Graphics mouse and keyboard input is a separate, permission-gated path and is never conflated with script-dispatched events.
 
-```swift
-import RushWKWebViewAdapter
+The adapter requires macOS 13 or newer and a Swift 5.9-compatible toolchain. Hidden conformance tests need no Accessibility permission; trusted input requires a logged-in GUI session and explicit Accessibility authorization. Run `swift test` for the serial conformance and performance harness. See the Swift package sources and tests for the integration surface.
 
-let adapter = try await MainActor.run {
-    try RushWKWebViewAdapter(configuration: .init(realmCount: 2))
-}
-try await adapter.start()
+## Linux prerequisites
 
-let lease = try await adapter.acquireRealm()
-let realm = try await adapter.realm(for: lease)
-try await realm.load(URLRequest(url: URL(string: "http://127.0.0.1:3000")!))
-try await realm.evaluateJavaScript("runRegisteredRushSuites()")
-let batch = await adapter.mailbox.nextBatch()
-try await adapter.releaseRealm(lease)
-```
+The checked-in Go dependency embeds the small native WebView adapter, but the operating system must provide GTK 3, WebKitGTK 4.1, and Xvfb. Rush reports the native loader error and names WebKitGTK when those libraries are absent.
 
-Failure capture writes a PNG screenshot, the current document HTML, and JSON metadata through `captureFailure(for:named:)`. Artifact names are sanitized before being used as filenames.
-
-Fast interactions should run inside the page. Trusted input is deliberately separate: use debug display mode, obtain `trustedInput(for:)`, and call its mouse or keyboard methods. Those events are posted through the Core Graphics HID event tap and require Accessibility authorization. The adapter never labels script-dispatched DOM events as trusted.
-
-### Runtime dependencies
-
-- macOS 13 Ventura or newer.
-- Xcode 15.4 or a compatible Swift 5.9 toolchain to build the package.
-- The system AppKit, ApplicationServices, and WebKit frameworks. No separately installed browser is used.
-- Safari's Develop menu enabled when interactive Web Inspector access is needed.
-- A logged-in macOS GUI session and Accessibility permission for the host executable when trusted native mouse or keyboard automation is requested. Hidden runs and ordinary conformance CI do not request this permission.
-
-Grant Accessibility permission under System Settings → Privacy & Security → Accessibility. Call `TrustedInputController.requestAccessibilityAuthorization(prompt: true)` only from an interactive debugging flow; automated runs should fail with an actionable permission error instead of displaying a system prompt.
-
-### Conformance and performance harness
-
-Run the macOS harness from the repository root:
+Debian or Ubuntu:
 
 ```sh
-swift test
+sudo apt-get install libwebkit2gtk-4.1-0 libgtk-3-0 xvfb xauth
 ```
 
-The conformance suite verifies hidden execution, persistent named sessions, transient realm reset, batched bridge delivery, failure artifacts, and the trusted-input boundary. The performance suite warms WebKit once, records ten repetitions, and checks the median host round trip against Rush's 250 ms target for 1,000 trivial assertions and 1 second target for 1,000 DOM create/query/mutate operations. The tests run serially because parallel WebKit processes would distort those measurements. GitHub Actions runs the same command on `macos-14`.
+Ubuntu releases using the 64-bit time ABI may name GTK's runtime package `libgtk-3-0t64`; installing `libwebkit2gtk-4.1-0` normally resolves the right GTK package automatically.
+
+Fedora:
+
+```sh
+sudo dnf install webkit2gtk4.1 gtk3 xorg-x11-server-Xvfb xorg-x11-xauth
+```
+
+Build and install the fixture dependency:
+
+```sh
+npm install
+make build
+```
+
+No WebKitGTK development headers or C compiler are needed because the Go binding loads its embedded adapter and system runtime libraries dynamically.
+
+## Running tests
+
+```sh
+./bin/rush test examples/basic.test.ts
+./bin/rush test examples/browser-api.test.ts examples/javascript.test.js
+./bin/rush test --json 'examples/*.test.ts'
+./bin/rush test --headed examples/basic.test.ts
+./bin/rush stop
+```
+
+Headless mode launches an authenticated Xvfb display and keeps it alive with the daemon. Headed mode requires an existing `DISPLAY` or `WAYLAND_DISPLAY`, uses a separate warm daemon, and enables the WebView debug flag. The daemon and its esbuild contexts remain warm across later invocations until `rush stop` is called.
+
+Each suite is bundled independently with `@rush/browser` and must import the APIs it uses. The WebKit harness executes the package's shared registry and maps its batched results onto the native protocol. Assertions, Testing Library queries, mocks, spies, fake timers, snapshots, and synthetic interactions therefore run in the real browser page instead of a duplicate embedded test implementation.
+
+Automatic JSX uses React when the project declares React, Preact when it declares only Preact, and React otherwise. `RUSH_JSX_IMPORT_SOURCE` provides an explicit override. Bundles run with `process.env.NODE_ENV` set to `test` by default so framework testing APIs remain available; `RUSH_NODE_ENV` can override it.
+
+Before the next suite, Rush clears the DOM, style nodes, timers, animation frames, registered event listeners, cookies, local and session storage, performance entries, and bundle globals. Bundle scoping supplies a fresh registry and mock runtime for every file. Rush does not yet provide a separate WebView realm per file, service-worker cleanup, native input, network interception, or app/session navigation in the Linux adapter.
+
+## Timing model
+
+Normal and JSON output report these measurements separately:
+
+- `build`: the host-side esbuild context rebuild.
+- `runner`: page time outside hooks and test callbacks, including registration and orchestration.
+- `application`: callback wall time after subtracting observed network-resource duration and completed requested timer delays.
+- `network`: WebKit resource timing durations observed during the suite.
+- `intentional wait`: requested delays for timers that fired while a test was executing.
+- `page total`: registration plus test execution inside WebKit.
+
+Network requests and timers can overlap, so the phase values are attribution signals rather than an accounting identity. Host build time is never folded into page time.
+
+## Reproducible benchmarks
+
+```sh
+./bin/rush bench
+./bin/rush bench --repeat 10 --cold-repeat 5 --json
+```
+
+The harness validates the exact number of executed passing tests and compares medians against the product targets without changing them:
+
+| Scenario | Fixture | Target metric |
+| --- | --- | ---: |
+| Process-cold WebKitGTK startup | smoke | under 2,000 ms before build/user test time |
+| 1,000 trivial assertions | assertions | under 250 ms warm page total |
+| 1,000 DOM tests | DOM | under 1,000 ms warm page total |
+| 1,000 Preact component tests | components | under 5,000 ms warm page total |
+| Incremental rebuild + 100 affected tests | generated edit | under 500 ms median |
+| 100 mixed browser tests | mixed | under 1,000 ms warm page total |
+
+The cold scenario starts a new native process and browser for every sample. It cannot flush kernel, filesystem, or WebKit caches, so the output describes process-cold startup on the current host, not a clean-machine CI claim. The 100-test fixture is a synthetic browser mix; it does not claim the separate representative Kodē migration target or the 10× Vitest comparison.
+
+All raw samples, phase medians, measurement definitions, targets, and pass/fail verdicts are emitted in JSON. A missed target makes the benchmark command fail.
+
+## Architecture
+
+The CLI connects to a mode-specific Unix socket under the user's cache directory. If needed, it starts the Go daemon and waits on a dedicated readiness pipe. The daemon owns one WebKitGTK event loop and a cache of esbuild `BuildContext` instances keyed by absolute suite path. Requests are serialized through the page, results cross the native bridge once per suite, and a per-suite timeout bounds a hung page.
+
+The Unix socket and log are user-only. Xvfb normally uses its local Unix socket. In read-only WSL/container environments where `/tmp/.X11-unix` lacks the required sticky bit, Rush falls back to a loopback TCP display protected by a generated Xauthority cookie.
+
+## Host integration contracts
+
+The adapter-independent host packages define the intended `run`, `watch`, and `debug` command surface, including terminal, JUnit XML, TAP, JSON, and GitHub reporters. Build configuration supports JSX modes, aliases, transforms, and esbuild plugins. Failed tests can produce screenshots and DOM snapshots under `.rush/artifacts` after measured user-test execution.
+
+- `app` connects parsed commands to a native runtime and maps outcomes to process exit codes.
+- `command` parses commands and produces build, reporter, and artifact configuration.
+- `watch` maintains esbuild's reverse import graph and selects only transitively affected suites. Config and plugin changes invalidate all suites.
+- `result` is the stable native-host-to-reporter result protocol.
+- `execution` orders runtime execution, failure collection, and reporting while preserving separate user, runner, artifact, and reporter timings.
+- `reporter` and `artifact` emit observable output without depending on a platform adapter.
+
+The Linux proof currently exposes its daemon through the `rush test` commands above. Wiring that adapter into the final command package is follow-on integration work; this README does not claim the two command paths are already unified.

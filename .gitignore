@@ -1,3 +1,9 @@
 .build/
-.rush/
 .swiftpm/
+node_modules/
+dist/
+coverage/
+/bin/
+*.sock
+*.log
+.rush/
