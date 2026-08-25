@@ -2,8 +2,8 @@ import Foundation
 import XCTest
 @testable import RushWKWebViewAdapter
 
-@MainActor
 final class PerformanceHarnessTests: XCTestCase {
+    @MainActor
     func testWarmThousandAssertionHostOverhead() async throws {
         let median = try await medianWarmDuration(javaScript: """
             var passed = 0;
@@ -21,6 +21,7 @@ final class PerformanceHarnessTests: XCTestCase {
         )
     }
 
+    @MainActor
     func testWarmThousandDOMOperationsHostOverhead() async throws {
         let median = try await medianWarmDuration(javaScript: """
             const root = document.createElement('main');
@@ -45,6 +46,7 @@ final class PerformanceHarnessTests: XCTestCase {
         )
     }
 
+    @MainActor
     private func medianWarmDuration(javaScript: String) async throws -> TimeInterval {
         let adapter = try RushWKWebViewAdapter(configuration: .init(realmCount: 1))
         try await adapter.start()

@@ -2,8 +2,8 @@ import Foundation
 import XCTest
 @testable import RushWKWebViewAdapter
 
-@MainActor
 final class ConformanceTests: XCTestCase {
+    @MainActor
     func testHiddenRealmBatchesBridgeMessages() async throws {
         let adapter = try RushWKWebViewAdapter(
             configuration: .init(realmCount: 1, displayMode: .hidden)
@@ -31,6 +31,7 @@ final class ConformanceTests: XCTestCase {
         try await adapter.releaseRealm(lease)
     }
 
+    @MainActor
     func testNamedSessionKeepsTheSameWarmRealm() async throws {
         let adapter = try RushWKWebViewAdapter(configuration: .init(realmCount: 1))
         try await adapter.start()
@@ -51,6 +52,7 @@ final class ConformanceTests: XCTestCase {
         try await adapter.releaseSession("realtime-client-a")
     }
 
+    @MainActor
     func testTransientRealmIsResetBeforeReuse() async throws {
         let adapter = try RushWKWebViewAdapter(configuration: .init(realmCount: 1))
         try await adapter.start()
@@ -75,6 +77,7 @@ final class ConformanceTests: XCTestCase {
         try await adapter.releaseRealm(second)
     }
 
+    @MainActor
     func testFailureCaptureWritesScreenshotDOMAndMetadata() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("rush-artifacts-\(UUID().uuidString)", isDirectory: true)
@@ -102,6 +105,7 @@ final class ConformanceTests: XCTestCase {
         try await adapter.releaseRealm(lease)
     }
 
+    @MainActor
     func testTrustedInputIsExplicitlyUnavailableForHiddenRuns() async throws {
         let adapter = try RushWKWebViewAdapter(
             configuration: .init(realmCount: 1, displayMode: .hidden)
