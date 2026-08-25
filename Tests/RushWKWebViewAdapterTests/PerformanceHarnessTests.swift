@@ -6,12 +6,14 @@ final class PerformanceHarnessTests: XCTestCase {
     @MainActor
     func testWarmThousandAssertionHostOverhead() async throws {
         let median = try await medianWarmDuration(javaScript: """
-            var passed = 0;
-            for (let index = 0; index < 1000; index += 1) {
-              if (index === index) passed += 1;
-            }
-            __rushBridge.emit('benchmark', { name: 'assertions', passed });
-            __rushBridge.flush();
+            (() => {
+              var passed = 0;
+              for (let index = 0; index < 1000; index += 1) {
+                if (index === index) passed += 1;
+              }
+              __rushBridge.emit('benchmark', { name: 'assertions', passed });
+              __rushBridge.flush();
+            })();
             """)
 
         XCTAssertLessThan(
@@ -24,19 +26,21 @@ final class PerformanceHarnessTests: XCTestCase {
     @MainActor
     func testWarmThousandDOMOperationsHostOverhead() async throws {
         let median = try await medianWarmDuration(javaScript: """
-            const root = document.createElement('main');
-            document.body.replaceChildren(root);
-            for (let index = 0; index < 1000; index += 1) {
-              const node = document.createElement('span');
-              node.dataset.index = String(index);
-              root.append(node);
-              if (root.querySelector(`[data-index="${index}"]`) !== node) {
-                throw new Error('DOM query mismatch');
+            (() => {
+              const root = document.createElement('main');
+              document.body.replaceChildren(root);
+              for (let index = 0; index < 1000; index += 1) {
+                const node = document.createElement('span');
+                node.dataset.index = String(index);
+                root.append(node);
+                if (root.querySelector(`[data-index="${index}"]`) !== node) {
+                  throw new Error('DOM query mismatch');
+                }
+                node.textContent = String(index + 1);
               }
-              node.textContent = String(index + 1);
-            }
-            __rushBridge.emit('benchmark', { name: 'dom', passed: 1000 });
-            __rushBridge.flush();
+              __rushBridge.emit('benchmark', { name: 'dom', passed: 1000 });
+              __rushBridge.flush();
+            })();
             """)
 
         XCTAssertLessThan(

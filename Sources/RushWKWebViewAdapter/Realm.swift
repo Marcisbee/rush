@@ -1,6 +1,6 @@
 import AppKit
 import Foundation
-@preconcurrency import WebKit
+import WebKit
 
 public struct RealmLease: Hashable, Sendable {
     public let realmID: UUID

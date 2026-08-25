@@ -1,5 +1,5 @@
 import Foundation
-@preconcurrency import WebKit
+import WebKit
 
 public enum JSONValue: Codable, Equatable, Sendable {
     case null
