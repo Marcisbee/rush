@@ -80,6 +80,17 @@ func (b *Builder) Build(cwd, name string) (string, float64, error) {
 				})
 			},
 		}
+		browserModulePlugin := api.Plugin{
+			Name: "rush-browser-module",
+			Setup: func(build api.PluginBuild) {
+				build.OnResolve(api.OnResolveOptions{Filter: "^@rush/browser$"}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
+					if path := browserModulePath(cwd); path != "" {
+						return api.OnResolveResult{Path: path}, nil
+					}
+					return api.OnResolveResult{}, nil
+				})
+			},
+		}
 		ctx, ctxErr := api.Context(api.BuildOptions{
 			AbsWorkingDir: cwd,
 			Stdin: &api.StdinOptions{
@@ -99,7 +110,7 @@ func (b *Builder) Build(cwd, name string) (string, float64, error) {
 			LogLevel:        api.LogLevelSilent,
 			NodePaths:       []string{filepath.Join(cwd, "node_modules")},
 			External:        []string{"util"},
-			Plugins:         []api.Plugin{hoistPlugin},
+			Plugins:         []api.Plugin{browserModulePlugin, hoistPlugin},
 			Define: map[string]string{
 				"process.env.NODE_ENV": strconv.Quote(nodeEnvironment),
 			},
@@ -121,6 +132,30 @@ func (b *Builder) Build(cwd, name string) (string, float64, error) {
 		return "", elapsed, fmt.Errorf("esbuild returned %d output files for %s", len(result.OutputFiles), name)
 	}
 	return string(result.OutputFiles[0].Contents), elapsed, nil
+}
+
+func browserModulePath(cwd string) string {
+	candidates := []string{os.Getenv("RUSH_BROWSER_MODULE")}
+	candidates = append(candidates,
+		filepath.Join(cwd, "node_modules", "@rush", "browser", "dist", "index.js"),
+		filepath.Join(cwd, "dist", "index.js"),
+	)
+	if executable, err := os.Executable(); err == nil {
+		candidates = append(candidates, filepath.Join(filepath.Dir(executable), "..", "dist", "index.js"))
+	}
+	for _, candidate := range candidates {
+		if candidate == "" {
+			continue
+		}
+		absolute, err := filepath.Abs(candidate)
+		if err != nil {
+			continue
+		}
+		if info, err := os.Stat(absolute); err == nil && !info.IsDir() {
+			return absolute
+		}
+	}
+	return ""
 }
 
 func detectJSXImportSource(cwd string) string {
