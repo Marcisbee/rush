@@ -288,26 +288,41 @@ func (s *Server) run(request Request) Response {
 	if request.Timeout > 0 {
 		timeout = time.Duration(request.Timeout) * time.Millisecond
 	}
-	for _, file := range request.Files {
-		source, buildMS, err := s.builder.Build(request.CWD, file)
-		if err != nil {
-			response.Error = err.Error()
-			response.WallMS = milliseconds(time.Since(started))
-			return response
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		id := fmt.Sprintf("run-%d", s.nextID.Add(1))
-		suite, err := s.browser.Run(ctx, id, file, source)
-		cancel()
-		if err != nil {
-			response.Error = fmt.Sprintf("run %s: %v", file, err)
-			response.WallMS = milliseconds(time.Since(started))
-			return response
-		}
-		suite.Timing.BuildMS = buildMS
-		response.Suites = append(response.Suites, suite)
+	bundles, buildMS, err := s.builder.BuildBatch(request.CWD, request.Files)
+	if err != nil {
+		response.Error = err.Error()
+		response.WallMS = milliseconds(time.Since(started))
+		return response
 	}
+	response.Profile.BundleMS = buildMS
+	browserStarted := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout*time.Duration(len(request.Files)))
+	id := fmt.Sprintf("run-%d", s.nextID.Add(1))
+	batch, err := s.browser.RunBatch(ctx, id, bundles)
+	cancel()
+	browserRoundtripMS := milliseconds(time.Since(browserStarted))
+	if err != nil {
+		response.Error = fmt.Sprintf("run suites: %v", err)
+		response.WallMS = milliseconds(time.Since(started))
+		return response
+	}
+	if len(batch.Suites) != len(bundles) {
+		response.Error = fmt.Sprintf("browser returned %d suites for %d bundles", len(batch.Suites), len(bundles))
+		response.WallMS = milliseconds(time.Since(started))
+		return response
+	}
+	perSuiteBuildMS := buildMS / float64(len(batch.Suites))
+	for index := range batch.Suites {
+		batch.Suites[index].Timing.BuildMS = perSuiteBuildMS
+		response.Profile.TestExecutionMS += batch.Suites[index].Timing.TotalMS
+		response.Profile.ResetMS += batch.Suites[index].Timing.ResetMS
+	}
+	response.Profile.BrowserExecutionMS = batch.BrowserMS
+	response.Profile.ReportingMS = batch.ReportingMS
+	response.Profile.BridgeMS = max(0, browserRoundtripMS-batch.BrowserMS-batch.ReportingMS)
+	response.Suites = batch.Suites
 	response.WallMS = milliseconds(time.Since(started))
+	response.Profile.NativeHostMS = max(0, response.WallMS-buildMS-browserRoundtripMS)
 	return response
 }
 

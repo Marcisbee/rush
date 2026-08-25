@@ -11,11 +11,23 @@ type Request struct {
 
 type Timing struct {
 	BuildMS       float64 `json:"build_ms"`
+	CompileMS     float64 `json:"compile_ms,omitempty"`
+	ResetMS       float64 `json:"reset_ms,omitempty"`
 	RunnerMS      float64 `json:"runner_ms"`
 	ApplicationMS float64 `json:"application_ms"`
 	NetworkMS     float64 `json:"network_ms"`
 	WaitMS        float64 `json:"wait_ms"`
 	TotalMS       float64 `json:"total_ms"`
+}
+
+type Profile struct {
+	BundleMS           float64 `json:"bundle_ms"`
+	NativeHostMS       float64 `json:"native_host_ms"`
+	BridgeMS           float64 `json:"bridge_ms"`
+	BrowserExecutionMS float64 `json:"browser_execution_ms"`
+	TestExecutionMS    float64 `json:"test_execution_ms"`
+	ResetMS            float64 `json:"reset_ms"`
+	ReportingMS        float64 `json:"reporting_ms"`
 }
 
 type TestResult struct {
@@ -36,6 +48,7 @@ type Response struct {
 	Cold      bool          `json:"cold"`
 	StartupMS float64       `json:"startup_ms"`
 	WallMS    float64       `json:"wall_ms"`
+	Profile   Profile       `json:"profile"`
 	Suites    []SuiteResult `json:"suites,omitempty"`
 }
 

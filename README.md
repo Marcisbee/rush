@@ -65,7 +65,7 @@ The WPE binary is deliberately headless-only. Use the default WebKitGTK build fo
 
 Headless mode launches an authenticated Xvfb display and keeps it alive with the daemon. Headed mode requires an existing `DISPLAY` or `WAYLAND_DISPLAY`, uses a separate warm daemon, and enables the WebView debug flag. The daemon and its esbuild contexts remain warm across later invocations until `rush stop` is called.
 
-Each suite is bundled independently with `@rush/browser` and must import the APIs it uses. The WebKit harness executes the package's shared registry and maps its batched results onto the native protocol. Assertions, Testing Library queries, mocks, spies, fake timers, snapshots, and synthetic interactions therefore run in the real browser page instead of a duplicate embedded test implementation.
+Each suite remains an independent IIFE with its own module graph and must import the APIs it uses. Rush traverses all requested suites in one esbuild batch, validates the complete recorded input graph before reusing unchanged output, and sends all suite work and results across one native bridge round trip. The WebKit harness caches the compiled factories by content hash but invokes a fresh factory and performs a full browser reset for every file. Assertions, Testing Library queries, mocks, spies, fake timers, snapshots, and synthetic interactions therefore run in the real browser page without sharing application module state between files.
 
 Automatic JSX uses React when the project declares React, Preact when it declares only Preact, and React otherwise. `RUSH_JSX_IMPORT_SOURCE` provides an explicit override. Bundles run with `process.env.NODE_ENV` set to `test` by default so framework testing APIs remain available; `RUSH_NODE_ENV` can override it.
 
@@ -83,6 +83,8 @@ Normal and JSON output report these measurements separately:
 - `network`: WebKit resource timing durations observed during the suite.
 - `intentional wait`: requested delays for timers that fired while a test was executing.
 - `page total`: registration plus test execution inside WebKit.
+
+JSON output also includes a request-level `profile`: `bundle` is the actual esbuild rebuild, `native_host` is Go orchestration outside the build and browser round trip, `bridge` is native dispatch and result transfer, `browser_execution` is the complete in-page batch, `test_execution` is the sum of the individual suite totals, `reset` is browser cleanup between files, and `reporting` is browser-side result serialization. CLI process overhead is the caller-observed process wall time minus `wall_ms`.
 
 Network requests and timers can overlap, so the phase values are attribution signals rather than an accounting identity. Host build time is never folded into page time.
 
@@ -110,7 +112,7 @@ All raw samples, phase medians, measurement definitions, targets, and pass/fail 
 
 ## Architecture
 
-The CLI connects to a mode-specific Unix socket under the user's cache directory. If needed, it starts the Go daemon and waits on a dedicated readiness pipe. The daemon owns one WebKitGTK event loop and a cache of esbuild `BuildContext` instances keyed by absolute suite path. Requests are serialized through the page, results cross the native bridge once per suite, and a per-suite timeout bounds a hung page.
+The CLI connects to an executable- and mode-specific Unix socket under the user's cache directory. Scoping by executable path prevents another checkout or incompatible build from silently answering a run. If needed, the CLI starts the Go daemon and waits on a dedicated readiness pipe. The daemon owns one WebKitGTK event loop and caches esbuild `BuildContext` instances by ordered suite set and build configuration. Requests are serialized through the page, independently compiled files execute sequentially with a reset between them, and work plus results cross the native bridge once per request.
 
 The Unix socket and log are user-only. Xvfb normally uses its local Unix socket. In read-only WSL/container environments where `/tmp/.X11-unix` lacks the required sticky bit, Rush falls back to a loopback TCP display protected by a generated Xauthority cookie.
 
