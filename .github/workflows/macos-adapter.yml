@@ -1,0 +1,30 @@
+name: macOS WKWebView adapter
+
+on:
+  pull_request:
+    paths:
+      - "Package.swift"
+      - "Sources/RushWKWebViewAdapter/**"
+      - "Tests/RushWKWebViewAdapterTests/**"
+      - ".github/workflows/macos-adapter.yml"
+  push:
+    branches: [main]
+    paths:
+      - "Package.swift"
+      - "Sources/RushWKWebViewAdapter/**"
+      - "Tests/RushWKWebViewAdapterTests/**"
+      - ".github/workflows/macos-adapter.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  conformance-and-performance:
+    runs-on: macos-14
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run shared adapter harness
+        env:
+          SWIFT_BACKTRACE: enable=yes,output-to=stdout,interactive=no
+        run: swift test

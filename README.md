@@ -4,6 +4,14 @@ Rush is a persistent WebView-native JavaScript and TypeScript test runner. This 
 
 The repository is under active development. The `@rush/browser` package contains the public, Vitest-compatible API that executes inside a real browser page. Native hosts provide navigation, isolated sessions, and trusted input through explicit adapters; ordinary assertions, queries, mocks, timers, snapshots, and synthetic interactions stay in the page.
 
+## macOS WKWebView adapter
+
+`RushWKWebViewAdapter` hosts a reusable pool of real `WKWebView` realms. Normal runs leave the views unattached to a window. Debug runs attach each realm to a visible window and mark it inspectable, so it appears in Safari's Develop menu on macOS 13.3 and newer.
+
+The adapter batches page bridge calls once per microtask, preserves named sessions, resets transient realms, and shares a warm WebKit process pool. Failure capture writes PNG, DOM, and metadata artifacts. Trusted Core Graphics mouse and keyboard input is a separate, permission-gated path and is never conflated with script-dispatched events.
+
+The adapter requires macOS 13 or newer and a Swift 5.9-compatible toolchain. Hidden conformance tests need no Accessibility permission; trusted input requires a logged-in GUI session and explicit Accessibility authorization. Run `swift test` for the serial conformance and performance harness. See the Swift package sources and tests for the integration surface.
+
 ## Linux prerequisites
 
 The checked-in Go dependency embeds the small native WebView adapter, but the operating system must provide GTK 3, WebKitGTK 4.1, and Xvfb. Rush reports the native loader error and names WebKitGTK when those libraries are absent.
