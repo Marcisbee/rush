@@ -84,3 +84,16 @@ All raw samples, phase medians, measurement definitions, targets, and pass/fail 
 The CLI connects to a mode-specific Unix socket under the user's cache directory. If needed, it starts the Go daemon and waits on a dedicated readiness pipe. The daemon owns one WebKitGTK event loop and a cache of esbuild `BuildContext` instances keyed by absolute suite path. Requests are serialized through the page, results cross the native bridge once per suite, and a per-suite timeout bounds a hung page.
 
 The Unix socket and log are user-only. Xvfb normally uses its local Unix socket. In read-only WSL/container environments where `/tmp/.X11-unix` lacks the required sticky bit, Rush falls back to a loopback TCP display protected by a generated Xauthority cookie.
+
+## Host integration contracts
+
+The adapter-independent host packages define the intended `run`, `watch`, and `debug` command surface, including terminal, JUnit XML, TAP, JSON, and GitHub reporters. Build configuration supports JSX modes, aliases, transforms, and esbuild plugins. Failed tests can produce screenshots and DOM snapshots under `.rush/artifacts` after measured user-test execution.
+
+- `app` connects parsed commands to a native runtime and maps outcomes to process exit codes.
+- `command` parses commands and produces build, reporter, and artifact configuration.
+- `watch` maintains esbuild's reverse import graph and selects only transitively affected suites. Config and plugin changes invalidate all suites.
+- `result` is the stable native-host-to-reporter result protocol.
+- `execution` orders runtime execution, failure collection, and reporting while preserving separate user, runner, artifact, and reporter timings.
+- `reporter` and `artifact` emit observable output without depending on a platform adapter.
+
+The Linux proof currently exposes its daemon through the `rush test` commands above. Wiring that adapter into the final command package is follow-on integration work; this README does not claim the two command paths are already unified.
