@@ -26,14 +26,14 @@ The next architecture worth measuring is a bounded pool of independently isolate
 
 ## Bounded parallel-realm follow-up
 
-The follow-up prototype keeps four independent WebKitGTK realms warm under one native daemon and event loop. The exact same 12-file, 100-test Kodē fixture and five-run process-wall method produced:
+The follow-up prototype keeps three independent WebKitGTK realms warm under one native daemon and event loop. The exact same 12-file, 100-test Kodē fixture and five-run process-wall method produced:
 
 | Measurement | Samples (ms) | Median | Target | Verdict |
 | --- | --- | ---: | ---: | --- |
-| Vitest/jsdom fresh process | 1,690.9; 1,604.1; 1,586.0; 1,582.2; 1,612.2 | 1,604.1 ms | baseline | pass |
-| Rush, same 100 tests | 67.2; 66.0; 72.9; 84.2; 88.2 | 72.9 ms | at most 160.4 ms (10×) | **pass: 22.0×** |
-| Rush warm 100-test repeat | 99.5; 103.2; 114.1; 117.9; 120.6 | 114.1 ms | under 1,000 ms | **pass** |
+| Vitest/jsdom fresh process | 1,612.6; 1,614.5; 1,650.4; 1,625.6; 1,622.1 | 1,622.1 ms | baseline | pass |
+| Rush, same 100 tests | 75.2; 68.5; 106.4; 102.8; 110.1 | 102.8 ms | at most 162.2 ms (10×) | **pass: 15.8×** |
+| Rush warm 100-test repeat | 129.5; 134.8; 147.8; 160.7; 157.7 | 147.8 ms | under 1,000 ms | **pass** |
 
 All 100 tests passed in every sample. Files keep separate esbuild bundles, module graphs, registries, and mock runtimes. Each realm still performs the complete DOM, timer, listener, storage, cookie, performance-entry, and added-global reset before its next file.
 
-This is a measured go for bounded parallel execution. Headless mode defaults to up to four realms based on available Go parallelism, configuration is rejected outside one through eight, and headed mode defaults to one. The benchmark daemon used four realms and retained exactly four WebKit web-process children across the warm series. Each realm retains at most 64 compiled factories, so both native realm count and browser factory retention are capped independently of the number of suites. The complete 1,169-test targets remain unmeasured and unclaimed.
+This is a measured go for bounded parallel execution. Headless mode defaults to up to three realms based on available Go parallelism, configuration is rejected outside one through four, and headed mode defaults to one. The benchmark daemon used three realms and retained exactly three WebKit web-process children across the warm series. Each realm retains at most 64 compiled factories, so both native realm count and browser factory retention are capped independently of the number of suites. The complete 1,169-test targets remain unmeasured and unclaimed.

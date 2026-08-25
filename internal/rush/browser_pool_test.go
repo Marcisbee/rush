@@ -40,10 +40,10 @@ func TestConfiguredBrowserPoolSizeIsBounded(t *testing.T) {
 	if size, err := configuredBrowserPoolSize(true, ""); err != nil || size != 1 {
 		t.Fatalf("headed size = %d, error = %v", size, err)
 	}
-	if size, err := configuredBrowserPoolSize(false, "8"); err != nil || size != 8 {
+	if size, err := configuredBrowserPoolSize(false, "4"); err != nil || size != 4 {
 		t.Fatalf("configured size = %d, error = %v", size, err)
 	}
-	for _, invalid := range []string{"0", "9", "many"} {
+	for _, invalid := range []string{"0", "5", "many"} {
 		if _, err := configuredBrowserPoolSize(false, invalid); err == nil {
 			t.Fatalf("configuration %q was accepted", invalid)
 		}

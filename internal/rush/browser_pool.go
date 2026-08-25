@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	defaultBrowserPoolSize = 4
-	maxBrowserPoolSize     = 8
+	defaultBrowserPoolSize = 3
+	maxBrowserPoolSize     = 4
 )
 
 type batchBrowser interface {
