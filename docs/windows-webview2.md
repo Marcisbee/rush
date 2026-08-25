@@ -35,6 +35,8 @@ go run ./cmd/rush-webview2-harness -repeats 10
 
 Add `-debug` to show the WebView and open DevTools. The harness exits non-zero if browser conformance, performance targets, trusted input, bridge batching, failure capture, or realm reuse fails.
 
+`-trusted-input=false` skips only the mouse and keyboard check for non-interactive CI services. The default remains `true`; release validation of trusted automation must run the default harness in a logged-in interactive desktop session.
+
 The adapter-independent conformance checks cover DOM behavior, Selection, `beforeinput`, Shadow DOM, and same-origin iframe behavior. Performance measurements report in-page work separately from native adapter overhead and use the parent Rush targets: 1,000 trivial assertions under 250 ms warm and 1,000 DOM create/query/mutate operations under 1 second warm.
 
 The Windows harness was run on 2026-08-25 using Windows 11 build 26200 and WebView2 Runtime 151.0.4129.101. Across 10 warm repeats, median total time was 0.511 ms for 1,000 trivial assertions and 2.924 ms for 1,000 DOM operations. The run also verified ten ordered bridge messages, persistent realm reuse, real PNG and DOM artifacts, and trusted mouse and keyboard events with `isTrusted === true`. These measurements validate this machine and workload; they are not a universal guarantee for application, network, or intentional-wait behavior.

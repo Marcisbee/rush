@@ -1,3 +1,4 @@
+/** @jsxImportSource preact */
 import {h, render} from "preact"
 import { expect, test } from "@rush/browser"
 
