@@ -9,13 +9,10 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
-	"path"
 	"strings"
 	"sync"
 	"time"
 )
-
-const appProxyPrefix = "/__rush/app/"
 
 type AppHTTPRequest struct {
 	ID      string            `json:"id"`
@@ -83,7 +80,7 @@ func (proxy *appProxy) navigate(realm, rawURL string) (string, error) {
 	registered.base = target
 	proxy.active = realm
 	proxy.mu.Unlock()
-	return proxy.proxyURL(realm, target), nil
+	return proxy.proxyURL(target), nil
 }
 
 func (proxy *appProxy) reset(realm string) {
@@ -95,10 +92,10 @@ func (proxy *appProxy) reset(realm string) {
 	proxy.mu.Unlock()
 }
 
-func (proxy *appProxy) proxyURL(realm string, target *url.URL) string {
-	proxyPath := appProxyPrefix + url.PathEscape(realm) + target.EscapedPath()
+func (proxy *appProxy) proxyURL(target *url.URL) string {
+	proxyPath := target.EscapedPath()
 	if target.Path == "" {
-		proxyPath += "/"
+		proxyPath = "/"
 	}
 	result := proxy.origin + proxyPath
 	if target.RawQuery != "" {
@@ -206,10 +203,10 @@ func (proxy *appProxy) ServeHTTP(response http.ResponseWriter, request *http.Req
 	removeFrameAncestors(response.Header(), "Content-Security-Policy")
 	removeFrameAncestors(response.Header(), "Content-Security-Policy-Report-Only")
 	response.Header().Del("X-Frame-Options")
-	rewriteResponseCookies(response.Header(), realm)
+	rewriteResponseCookies(response.Header())
 	if location := response.Header().Get("Location"); location != "" {
 		if redirected, resolveErr := target.Parse(location); resolveErr == nil {
-			response.Header().Set("Location", proxy.proxyURL(realm, redirected))
+			response.Header().Set("Location", proxy.proxyURL(redirected))
 		}
 	}
 	response.WriteHeader(upstream.StatusCode)
@@ -217,48 +214,18 @@ func (proxy *appProxy) ServeHTTP(response http.ResponseWriter, request *http.Req
 }
 
 func (proxy *appProxy) resolve(request *http.Request) (string, *url.URL, *http.Client, bool) {
-	realm, suffix, ok := splitAppProxyPath(request.URL.Path)
-	if !ok {
-		referer, err := url.Parse(request.Referer())
-		if err == nil {
-			realm, _, ok = splitAppProxyPath(referer.Path)
-		}
-		if !ok {
-			proxy.mu.RLock()
-			realm = proxy.active
-			proxy.mu.RUnlock()
-			if realm == "" {
-				return "", nil, nil, false
-			}
-		}
-		suffix = request.URL.Path
-	}
 	proxy.mu.RLock()
+	realm := proxy.active
 	registered := proxy.realms[realm]
 	proxy.mu.RUnlock()
 	if registered == nil || registered.base == nil {
 		return "", nil, nil, false
 	}
 	target := *registered.base
-	target.Path = path.Clean("/" + strings.TrimPrefix(suffix, "/"))
-	if strings.HasSuffix(suffix, "/") && !strings.HasSuffix(target.Path, "/") {
-		target.Path += "/"
-	}
-	target.RawPath = ""
+	target.Path = request.URL.Path
+	target.RawPath = request.URL.RawPath
 	target.RawQuery = request.URL.RawQuery
 	return realm, &target, registered.client, true
-}
-
-func splitAppProxyPath(value string) (realm, suffix string, ok bool) {
-	if !strings.HasPrefix(value, appProxyPrefix) {
-		return "", "", false
-	}
-	remainder := strings.TrimPrefix(value, appProxyPrefix)
-	index := strings.IndexByte(remainder, '/')
-	if index < 0 {
-		return remainder, "/", remainder != ""
-	}
-	return remainder[:index], remainder[index:], remainder[:index] != ""
 }
 
 func flattenHeaders(headers http.Header) map[string]string {
@@ -289,7 +256,7 @@ func removeHopHeaders(headers http.Header) {
 	}
 }
 
-func rewriteResponseCookies(headers http.Header, realm string) {
+func rewriteResponseCookies(headers http.Header) {
 	cookies := headers.Values("Set-Cookie")
 	if len(cookies) == 0 {
 		return
@@ -304,7 +271,7 @@ func rewriteResponseCookies(headers http.Header, realm string) {
 				kept = append(kept, attribute)
 			}
 		}
-		kept = append(kept, " Path="+appProxyPrefix+url.PathEscape(realm)+"/")
+		kept = append(kept, " Path=/")
 		headers.Add("Set-Cookie", strings.Join(kept, ";"))
 	}
 }

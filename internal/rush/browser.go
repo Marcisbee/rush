@@ -26,6 +26,8 @@ type Browser struct {
 	routes         map[string]chan AppHTTPResponse
 }
 
+const browserControllerPath = "/__rush/controller"
+
 func NewBrowser(headed bool) (*Browser, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -34,11 +36,7 @@ func NewBrowser(headed bool) (*Browser, error) {
 	origin := "http://" + listener.Addr().String()
 	proxy := newAppProxy(origin)
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(response http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/" {
-			proxy.ServeHTTP(response, request)
-			return
-		}
+	mux.HandleFunc(browserControllerPath, func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Cache-Control", "no-store")
 		response.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = response.Write([]byte(runtimeHTML))
@@ -49,6 +47,7 @@ func NewBrowser(headed bool) (*Browser, error) {
 		response.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = response.Write([]byte("rush"))
 	})
+	mux.Handle("/", proxy)
 	harnessServer := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = harnessServer.Serve(listener) }()
 
@@ -98,7 +97,7 @@ func NewBrowser(headed bool) (*Browser, error) {
 	}
 	view.SetTitle("Rush — WebKitGTK")
 	view.SetSize(1280, 800, webview.HintNone)
-	view.Navigate(origin + "/")
+	view.Navigate(origin + browserControllerPath)
 	return browser, nil
 }
 

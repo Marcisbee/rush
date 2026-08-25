@@ -33,6 +33,9 @@ func TestAppProxyNavigatesInspectsAndFulfillsRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if pageURL != server.URL+"/account?tab=profile" {
+		t.Fatalf("navigation URL = %q", pageURL)
+	}
 	pageResponse, err := http.Get(pageURL)
 	if err != nil {
 		t.Fatal(err)
@@ -78,11 +81,23 @@ func TestAppProxyRewritesRedirectsAndRemovesFramingRestrictions(t *testing.T) {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if got := response.Header.Get("Location"); got != server.URL+appProxyPrefix+"test-2/signed-in" {
+	if got := response.Header.Get("Location"); got != server.URL+"/signed-in" {
 		t.Fatalf("location = %q", got)
 	}
 	if response.Header.Get("Content-Security-Policy") != "default-src 'self'" || response.Header.Get("X-Frame-Options") != "" {
 		t.Fatalf("framing headers were not removed: %#v", response.Header)
+	}
+}
+
+func TestAppProxyPreservesApplicationPathQueryAndFragment(t *testing.T) {
+	proxy := newAppProxy("http://127.0.0.1:4321")
+
+	pageURL, err := proxy.navigate("test-3", "https://example.test/login?next=%2Faccount#form")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pageURL != "http://127.0.0.1:4321/login?next=%2Faccount#form" {
+		t.Fatalf("navigation URL = %q", pageURL)
 	}
 }
 

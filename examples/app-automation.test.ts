@@ -2,6 +2,25 @@ import { expect, native, test, waitFor } from "@rush/browser"
 
 const appOrigin = "http://127.0.0.1:45678"
 
+test.app("preserves the application path, query, and fragment", async ({goto, network, window}) => {
+  network.route(`${appOrigin}/login?next=%2Faccount`, route => route.fulfill({
+    headers: {"Content-Type": "text/html; charset=utf-8"},
+    body: `<p>login</p>`,
+  }))
+  network.route(`${appOrigin}/`, route => route.fulfill({
+    headers: {"Content-Type": "text/html; charset=utf-8"},
+    body: `<p>home</p>`,
+  }))
+
+  await goto(`${appOrigin}/login?next=%2Faccount#form`)
+  expect(window.location.pathname).toBe("/login")
+  expect(window.location.search).toBe("?next=%2Faccount")
+  expect(window.location.hash).toBe("#form")
+
+  await goto(`${appOrigin}/`)
+  expect(window.location.pathname).toBe("/")
+})
+
 test.app("navigates, intercepts requests, and uses trusted input", async ({goto, network, page}) => {
   network.route(`${appOrigin}/account`, route => route.fulfill({
     headers: {"Content-Type": "text/html; charset=utf-8"},
