@@ -29,6 +29,20 @@ make build
 
 No WebKitGTK development headers or C compiler are needed because the Go binding loads its embedded adapter and system runtime libraries dynamically.
 
+### Optional WPE headless build
+
+WPE WebKit 2.52 or newer can replace WebKitGTK and Xvfb for headless Linux CI. It uses WPE's in-process headless display backend, so no X11 or Wayland compositor is started:
+
+```sh
+make build-wpe
+./bin/wpe/rush doctor
+./bin/wpe/rush test examples/basic.test.ts
+```
+
+`build-wpe` requires a C compiler, `pkg-config`, and the `wpe-webkit-2.0` and `wpe-platform-headless-2.0` development packages. The resulting `rush` binary and `libwebview.so` must remain together. The complete matching WPE runtime must also install its web, network, and GPU process executables in the location configured by that WPE build.
+
+The WPE binary is deliberately headless-only. Use the default WebKitGTK build for `--headed` debugging. WPE is opt-in because the evaluated Ubuntu 26.04 image did not offer WPE WebKit 2.x packages; building WebKit from source is not yet a reasonable default CI prerequisite. See [the WPE evaluation](docs/wpe-evaluation.md) for the measured comparison and limitations.
+
 ## Running tests
 
 ```sh
@@ -68,7 +82,7 @@ The harness validates the exact number of executed passing tests and compares me
 
 | Scenario | Fixture | Target metric |
 | --- | --- | ---: |
-| Process-cold WebKitGTK startup | smoke | under 2,000 ms before build/user test time |
+| Process-cold browser startup | smoke | under 2,000 ms before build/user test time |
 | 1,000 trivial assertions | assertions | under 250 ms warm page total |
 | 1,000 DOM tests | DOM | under 1,000 ms warm page total |
 | 1,000 Preact component tests | components | under 5,000 ms warm page total |
