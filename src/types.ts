@@ -50,7 +50,8 @@ export interface NativeAutomation {
 
 export interface SessionRealm {
   name: string;
-  root: ParentNode;
+  /** Present when the adapter exposes the client DOM in this JavaScript realm. */
+  root?: ParentNode;
   url(): string;
   goto(url: string): Promise<void>;
   evaluate<T>(callback: () => Awaitable<T>): Promise<T>;

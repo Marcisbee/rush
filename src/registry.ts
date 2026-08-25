@@ -296,7 +296,9 @@ async function createContext(definition: TestDefinition): Promise<TestContext> {
   if (realms.length !== names.length) throw new Error(`Session adapter created ${realms.length} clients; expected ${names.length}`);
   const clients = realms.map((realm) => ({
     name: realm.name,
-    page: createPage(realm.root),
+    // Native session clients live in separate WebViews. Their page code runs in
+    // evaluate(), while same-realm adapters can additionally expose a DOM root.
+    page: createPage(realm.root ?? document.createDocumentFragment()),
     url: realm.url,
     goto: realm.goto,
     evaluate: realm.evaluate,

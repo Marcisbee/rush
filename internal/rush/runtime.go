@@ -18,6 +18,8 @@ const runtimeHTML = `<!doctype html>
   const listeners = [];
   let collecting = false;
   let intentionalWait = 0;
+  let sessionTiming = {wall: 0, runner: 0, application: 0, network: 0, wait: 0};
+  let sessionBatch = null;
   let baselineGlobals;
 
   function formatError(error) {
@@ -89,6 +91,59 @@ const runtimeHTML = `<!doctype html>
       }
     }
     intentionalWait = 0;
+    sessionTiming = {wall: 0, runner: 0, application: 0, network: 0, wait: 0};
+    sessionBatch = null;
+  }
+
+  async function sessionOperation(operation) {
+    if (!sessionBatch) {
+      sessionBatch = {active: 0, started: performance.now(), runner: 0, application: 0, network: 0, wait: 0};
+    }
+    const batch = sessionBatch;
+    batch.active++;
+    try {
+      const result = await operation();
+      const timing = result.timing || {};
+      // Concurrent clients contribute one wall-clock batch rather than
+      // multiplying host overhead by the number of clients.
+      batch.runner = Math.max(batch.runner, Number(timing.runner_ms) || 0);
+      batch.application = Math.max(batch.application, Number(timing.application_ms) || 0);
+      batch.network += Number(timing.network_ms) || 0;
+      batch.wait = Math.max(batch.wait, Number(timing.wait_ms) || 0);
+      return result;
+    } finally {
+      batch.active--;
+      if (batch.active === 0) {
+        sessionTiming.wall += performance.now() - batch.started;
+        sessionTiming.runner += batch.runner;
+        sessionTiming.application += batch.application;
+        sessionTiming.network += batch.network;
+        sessionTiming.wait += batch.wait;
+        if (sessionBatch === batch) sessionBatch = null;
+      }
+    }
+  }
+
+  async function createSession(names) {
+    const leases = await window.__rushCreateSession(names);
+    return leases.map(lease => {
+      let currentURL = "about:blank";
+      return {
+        name: lease.name,
+        url: () => currentURL,
+        async goto(url) {
+          const result = await sessionOperation(() => window.__rushSessionGoto(lease.id, url));
+          currentURL = result.url || url;
+        },
+        async evaluate(callback) {
+          if (typeof callback !== "function") throw new TypeError("session client evaluate requires a callback");
+          const result = await sessionOperation(() => window.__rushSessionEvaluate(lease.id, callback.toString()));
+          currentURL = result.url || currentURL;
+          return result.value;
+        },
+        async dispose() { await window.__rushDisposeSession(lease.id); },
+      };
+    });
   }
 
   async function execute(id, filename, source) {
@@ -104,7 +159,7 @@ const runtimeHTML = `<!doctype html>
       if (!api || typeof api.run !== "function") {
         throw new Error("suite bundle did not expose the @rush/browser runtime");
       }
-      api.configureRuntime({});
+      api.configureRuntime({createSession});
       const runResult = await api.run({emit: false});
       results = runResult.tests.map(item => ({
         name: item.fullName,
@@ -118,9 +173,12 @@ const runtimeHTML = `<!doctype html>
     }
     collecting = false;
     const total = performance.now() - suiteStart;
-    const network = performance.getEntriesByType("resource").reduce((sum, entry) => sum + entry.duration, 0);
-    const application = Math.max(0, callbackWall - intentionalWait - network);
-    const runner = Math.max(0, total - callbackWall);
+    const coordinatorNetwork = performance.getEntriesByType("resource").reduce((sum, entry) => sum + entry.duration, 0);
+    const network = coordinatorNetwork + sessionTiming.network;
+    const waits = intentionalWait + sessionTiming.wait;
+    const coordinatorApplication = Math.max(0, callbackWall - sessionTiming.wall - intentionalWait - coordinatorNetwork);
+    const application = coordinatorApplication + sessionTiming.application;
+    const runner = Math.max(0, total - callbackWall) + sessionTiming.runner;
     const payload = {
       id,
       file: filename,
@@ -130,7 +188,7 @@ const runtimeHTML = `<!doctype html>
         runner_ms: runner,
         application_ms: application,
         network_ms: network,
-        wait_ms: intentionalWait,
+        wait_ms: waits,
         total_ms: total,
       },
     };

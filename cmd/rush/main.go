@@ -37,9 +37,20 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return stop(args[1:])
 	case "__daemon":
 		return daemon(args[1:])
+	case "__session-worker":
+		return sessionWorker(args[1:])
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
+}
+
+func sessionWorker(args []string) error {
+	set := flag.NewFlagSet("__session-worker", flag.ContinueOnError)
+	headed := set.Bool("headed", false, "show the session browser")
+	if err := set.Parse(args); err != nil {
+		return err
+	}
+	return rush.SessionWorkerMain(*headed)
 }
 
 func runTests(args []string, stdout, stderr io.Writer) error {

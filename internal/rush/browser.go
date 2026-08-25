@@ -14,12 +14,13 @@ import (
 )
 
 type Browser struct {
-	view    webview.WebView
-	server  *http.Server
-	ready   chan struct{}
-	once    sync.Once
-	mu      sync.Mutex
-	pending map[string]chan SuiteResult
+	view     webview.WebView
+	server   *http.Server
+	sessions *SessionPool
+	ready    chan struct{}
+	once     sync.Once
+	mu       sync.Mutex
+	pending  map[string]chan SuiteResult
 }
 
 func NewBrowser(headed bool) (*Browser, error) {
@@ -43,6 +44,11 @@ func NewBrowser(headed bool) (*Browser, error) {
 		response.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = response.Write([]byte("rush"))
 	})
+	mux.HandleFunc("/__rush/session", func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Cache-Control", "no-store")
+		response.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = response.Write([]byte(`<!doctype html><html><body><main data-testid="client">session client</main></body></html>`))
+	})
 	harnessServer := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = harnessServer.Serve(listener) }()
 
@@ -52,10 +58,11 @@ func NewBrowser(headed bool) (*Browser, error) {
 		return nil, fmt.Errorf("WebKitGTK is unavailable: %w", err)
 	}
 	browser := &Browser{
-		view:    view,
-		server:  harnessServer,
-		ready:   make(chan struct{}),
-		pending: make(map[string]chan SuiteResult),
+		view:     view,
+		server:   harnessServer,
+		sessions: NewSessionPool(headed, defaultSessionPoolSize),
+		ready:    make(chan struct{}),
+		pending:  make(map[string]chan SuiteResult),
 	}
 	if err := view.Bind("__rushReady", func() {
 		browser.once.Do(func() { close(browser.ready) })
@@ -64,8 +71,29 @@ func NewBrowser(headed bool) (*Browser, error) {
 		return nil, fmt.Errorf("bind browser-ready bridge: %w", err)
 	}
 	if err := view.Bind("__rushReport", browser.receive); err != nil {
+		browser.sessions.Close()
 		view.Destroy()
 		return nil, fmt.Errorf("bind result bridge: %w", err)
+	}
+	if err := view.Bind("__rushCreateSession", browser.sessions.Create); err != nil {
+		browser.sessions.Close()
+		view.Destroy()
+		return nil, fmt.Errorf("bind session creation bridge: %w", err)
+	}
+	if err := view.Bind("__rushSessionGoto", browser.sessions.Goto); err != nil {
+		browser.sessions.Close()
+		view.Destroy()
+		return nil, fmt.Errorf("bind session navigation bridge: %w", err)
+	}
+	if err := view.Bind("__rushSessionEvaluate", browser.sessions.Evaluate); err != nil {
+		browser.sessions.Close()
+		view.Destroy()
+		return nil, fmt.Errorf("bind session evaluation bridge: %w", err)
+	}
+	if err := view.Bind("__rushDisposeSession", browser.sessions.Dispose); err != nil {
+		browser.sessions.Close()
+		view.Destroy()
+		return nil, fmt.Errorf("bind session disposal bridge: %w", err)
 	}
 	view.SetTitle("Rush — WebKitGTK")
 	view.SetSize(1280, 800, webview.HintNone)
@@ -77,6 +105,7 @@ func (b *Browser) Ready() <-chan struct{} { return b.ready }
 func (b *Browser) RunLoop()               { b.view.Run() }
 func (b *Browser) Stop()                  { b.view.Terminate() }
 func (b *Browser) Close() {
+	b.sessions.Close()
 	b.view.Destroy()
 	_ = b.server.Close()
 }
