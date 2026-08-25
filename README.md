@@ -6,11 +6,21 @@ The repository is under active development. The `@rush/browser` package contains
 
 ## Native adapters
 
+### Windows WebView2
+
 The Windows adapter is implemented in `platform/webview2`. It keeps WebView2 controllers warm, leases reusable browser realms from a bounded pool, batches page bridge messages, captures rendered PNG and DOM failure artifacts, and exposes trusted Windows mouse and keyboard automation separately from fast synthetic page events.
 
 Normal Windows runs use a hidden, off-screen host window. Debug mode shows the host and opens WebView2 DevTools. See [Windows WebView2 setup and validation](docs/windows-webview2.md).
 
 The adapter-independent browser conformance and warm performance workloads live in `harness`, so other native adapters can run the same checks.
+
+### macOS WKWebView
+
+`RushWKWebViewAdapter` hosts a reusable pool of real `WKWebView` realms. Normal runs leave the views unattached to a window. Debug runs attach each realm to a visible window and mark it inspectable, so it appears in Safari's Develop menu on macOS 13.3 and newer.
+
+The adapter batches page bridge calls once per microtask, preserves named sessions, resets transient realms, and shares a warm WebKit process pool. Failure capture writes PNG, DOM, and metadata artifacts. Trusted Core Graphics mouse and keyboard input is a separate, permission-gated path and is never conflated with script-dispatched events.
+
+The adapter requires macOS 13 or newer and a Swift 5.9-compatible toolchain. Hidden conformance tests need no Accessibility permission; trusted input requires a logged-in GUI session and explicit Accessibility authorization. Run `swift test` for the serial conformance and performance harness. See the Swift package sources and tests for the integration surface.
 
 ## Linux prerequisites
 
@@ -38,6 +48,20 @@ make build
 ```
 
 No WebKitGTK development headers or C compiler are needed because the Go binding loads its embedded adapter and system runtime libraries dynamically.
+
+### Optional WPE headless build
+
+WPE WebKit 2.52 or newer can replace WebKitGTK and Xvfb for headless Linux CI. It uses WPE's in-process headless display backend, so no X11 or Wayland compositor is started:
+
+```sh
+make build-wpe
+./bin/wpe/rush doctor
+./bin/wpe/rush test examples/basic.test.ts
+```
+
+`build-wpe` requires a C compiler, `pkg-config`, and the `wpe-webkit-2.0` and `wpe-platform-headless-2.0` development packages. The resulting `rush` binary and `libwebview.so` must remain together. The complete matching WPE runtime must also install its web, network, and GPU process executables in the location configured by that WPE build.
+
+The WPE binary is deliberately headless-only. Use the default WebKitGTK build for `--headed` debugging. WPE is opt-in because the evaluated Ubuntu 26.04 image did not offer WPE WebKit 2.x packages; building WebKit from source is not yet a reasonable default CI prerequisite. See [the WPE evaluation](docs/wpe-evaluation.md) for the measured comparison and limitations.
 
 ## Running tests
 
@@ -83,7 +107,7 @@ The harness validates the exact number of executed passing tests and compares me
 
 | Scenario | Fixture | Target metric |
 | --- | --- | ---: |
-| Process-cold WebKitGTK startup | smoke | under 2,000 ms before build/user test time |
+| Process-cold browser startup | smoke | under 2,000 ms before build/user test time |
 | 1,000 trivial assertions | assertions | under 250 ms warm page total |
 | 1,000 DOM tests | DOM | under 1,000 ms warm page total |
 | 1,000 Preact component tests | components | under 5,000 ms warm page total |

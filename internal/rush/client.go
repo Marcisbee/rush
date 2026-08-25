@@ -21,10 +21,7 @@ func SocketPath(headed bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	mode := "headless"
-	if headed {
-		mode = "headed"
-	}
+	mode := backendSocketMode(headed)
 	return filepath.Join(cache, "rush", "daemon-"+mode+".sock"), nil
 }
 
@@ -95,6 +92,10 @@ func spawnDaemon(socket string, headed bool) error {
 	args := []string{"__daemon", "--socket", socket}
 	var command *exec.Cmd
 	if headed {
+		if !SupportsHeaded() {
+			writer.Close()
+			return fmt.Errorf("the %s adapter is headless-only; use the default WebKitGTK build for headed debugging", BackendName())
+		}
 		if os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {
 			writer.Close()
 			return errors.New("headed mode requires DISPLAY or WAYLAND_DISPLAY; start a desktop session or omit --headed")
