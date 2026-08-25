@@ -25,4 +25,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run shared adapter harness
+        env:
+          SWIFT_BACKTRACE: enable=yes,output-to=stdout,interactive=no
         run: swift test
