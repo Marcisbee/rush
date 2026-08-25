@@ -65,6 +65,7 @@ final class NavigationObserver: NSObject, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard let navigation else { return }
         guard let pending, pending.navigation === navigation else { return }
         self.pending = nil
         pending.continuation.resume()
@@ -87,6 +88,7 @@ final class NavigationObserver: NSObject, WKNavigationDelegate {
     }
 
     private func finishFailed(_ navigation: WKNavigation?, error: Error) {
+        guard let navigation else { return }
         guard let pending, pending.navigation === navigation else { return }
         self.pending = nil
         pending.continuation.resume(throwing: error)

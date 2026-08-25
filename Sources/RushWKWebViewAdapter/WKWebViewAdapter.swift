@@ -97,6 +97,7 @@ public final class RushWKWebViewAdapter {
         guard realms.isEmpty else { return }
         guard !stopped else { throw WKWebViewAdapterError.adapterAlreadyStopped }
 
+        _ = NSApplication.shared
         if case .debug = configuration.displayMode {
             NSApplication.shared.setActivationPolicy(.regular)
         }

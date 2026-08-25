@@ -43,7 +43,7 @@ Grant Accessibility permission under System Settings → Privacy & Security → 
 Run the macOS harness from the repository root:
 
 ```sh
-swift test --parallel
+swift test
 ```
 
-The conformance suite verifies hidden execution, persistent named sessions, transient realm reset, batched bridge delivery, failure artifacts, and the trusted-input boundary. The performance suite warms WebKit once, records ten repetitions, and checks the median host round trip against Rush's 250 ms target for 1,000 trivial assertions and 1 second target for 1,000 DOM create/query/mutate operations. GitHub Actions runs the same command on `macos-14`.
+The conformance suite verifies hidden execution, persistent named sessions, transient realm reset, batched bridge delivery, failure artifacts, and the trusted-input boundary. The performance suite warms WebKit once, records ten repetitions, and checks the median host round trip against Rush's 250 ms target for 1,000 trivial assertions and 1 second target for 1,000 DOM create/query/mutate operations. The tests run serially because parallel WebKit processes would distort those measurements. GitHub Actions runs the same command on `macos-14`.

@@ -25,4 +25,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run shared adapter harness
-        run: swift test --parallel
+        run: swift test
