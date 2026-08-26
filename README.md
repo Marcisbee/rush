@@ -106,7 +106,6 @@ Shell globs and multiple files are accepted. The adapter-independent command pac
 - [Reporters, failure artifacts, and CI](docs/ci-reporting.md)
 - [Benchmark methodology and results](docs/benchmarks.md)
 - [Compatibility and platform status](docs/compatibility.md)
-- [Workspace migration guidance](docs/migration.md)
 - [Windows WebView2 setup and validation](docs/windows-webview2.md)
 - [WPE WebKit evaluation](docs/wpe-evaluation.md)
 - [macOS WKWebView build and validation](docs/macos-wkwebview.md)
