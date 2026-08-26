@@ -7,6 +7,7 @@ import {
   describe,
   expect,
   getSnapshotValues,
+  it,
   test,
 } from "rush-webtest";
 
@@ -45,6 +46,38 @@ describe("snapshot registry", () => {
     expect({ beta: 2, alpha: 1 }).toMatchSnapshot();
     expect(getSnapshotValues()).toEqual({
       [key]: '{"alpha": 1, "beta": 2}',
+    });
+  });
+});
+
+describe("parameterized row shapes", () => {
+  const received: unknown[] = [];
+
+  afterAll(() => {
+    expect(received).toEqual([
+      null,
+      "ready",
+      { label: "object", value: 42 },
+      "recording.webm",
+      "suite",
+    ]);
+  });
+
+  it.each([null, "ready"] as const)("passes scalar row %s", (value) => {
+    received.push(value);
+  });
+
+  test.each([{ label: "object", value: 42 }] as const)("passes $label row", (value) => {
+    received.push(value);
+  });
+
+  test.each([new File(["video"], "recording.webm")])("passes File row $name", (file) => {
+    received.push(file.name);
+  });
+
+  describe.each([{ label: "suite" }] as const)("$label row suite", (value) => {
+    test("receives one object argument", () => {
+      received.push(value.label);
     });
   });
 });

@@ -57,3 +57,24 @@ test("mocked", () => read());`
 		t.Fatalf("hoisted state still depends on the delayed vi import:\n%s", transformed)
 	}
 }
+
+func TestTransformHoistedMocksRewritesImportActualInMockFactory(t *testing.T) {
+	source := `import { test, vi } from "rush-webtest";
+import { crop } from "./avatarCrop";
+vi.mock("./avatarCrop", async () => {
+  const actual = await vi.importActual<typeof import("./avatarCrop")>("./avatarCrop");
+  return { ...actual, crop: () => "mocked" };
+});
+test("mocked", () => crop());`
+
+	transformed, err := transformHoistedMocks(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(transformed, `vi.importActual<typeof import("./avatarCrop")>(() => import("./avatarCrop"))`) {
+		t.Fatalf("importActual did not receive an importer callback:\n%s", transformed)
+	}
+	if !strings.Contains(transformed, `__rushRegisterMock__("./avatarCrop"`) {
+		t.Fatalf("surrounding mock registration was not preserved:\n%s", transformed)
+	}
+}

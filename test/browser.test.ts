@@ -245,6 +245,22 @@ describe("static mock hoisting", () => {
     expect(transformed).not.toContain("const { state } = vi.hoisted");
   });
 
+  test("loads static vi.importActual requests through importer callbacks", async () => {
+    const transformed = await transformHoistedMocks(`
+      import { vi, test } from "rush-webtest";
+      import { crop } from "./avatarCrop";
+      vi.mock("./avatarCrop", async () => {
+        const actual = await vi.importActual<typeof import("./avatarCrop")>("./avatarCrop");
+        return { ...actual, crop: () => "mocked" };
+      });
+      test("mocked", () => crop());
+    `);
+
+    expect(transformed).toContain(`vi.importActual<typeof import("./avatarCrop")>(() => import("./avatarCrop"))`);
+    expect(transformed).toContain(`__rushRegisterMock__("./avatarCrop"`);
+    expect(transformed).not.toContain(`vi.importActual<typeof import("./avatarCrop")>("./avatarCrop")`);
+  });
+
   test("leaves modules without static mocks unchanged", async () => {
     const source = `import { test } from "rush-webtest"; test("ok", () => {});`;
     expect(await transformHoistedMocks(source)).toBe(source);
