@@ -149,6 +149,33 @@ function findDescriptor(target: object, property: PropertyKey): PropertyDescript
 
 let clock: Clock | undefined;
 
+export interface WaitForOptions {
+  timeout?: number;
+  interval?: number;
+}
+
+export async function waitFor<T>(callback: () => Awaitable<T>, options: number | WaitForOptions = {}): Promise<T> {
+  const resolved = typeof options === "number" ? { timeout: options } : options;
+  const timeout = resolved.timeout ?? 1_000;
+  const interval = resolved.interval ?? 50;
+  let elapsed = 0;
+  let lastError: unknown;
+
+  for (;;) {
+    try {
+      return await callback();
+    } catch (error) {
+      lastError = error;
+    }
+
+    if (elapsed >= timeout) throw lastError;
+    const delay = Math.min(interval, timeout - elapsed);
+    if (clock) await clock.tickAsync(delay);
+    else await new Promise<void>((resolve) => setTimeout(resolve, delay));
+    elapsed += delay;
+  }
+}
+
 export function useFakeTimers(options: Config = {}): Clock {
   if (clock) clock.uninstall();
   const timers = FakeTimers.withGlobal(globalThis);
@@ -230,6 +257,7 @@ function unstubAllGlobals(): void {
 
 export const vi = {
   fn,
+  waitFor,
   spyOn,
   isMockFunction(value: unknown): value is MockFunction { return typeof value === "function" && (value as Partial<MockFunction>)._isMockFunction === true; },
   mocked<T>(value: T): T { return value; },

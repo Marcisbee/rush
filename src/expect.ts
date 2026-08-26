@@ -12,6 +12,7 @@ export interface AsymmetricMatcher {
 type PromiseMode = "none" | "resolves" | "rejects";
 type MatcherResult = void | Promise<void>;
 type Matcher = (received: unknown, ...expected: unknown[]) => boolean | { pass: boolean; message?: string };
+type Assertion = Expectation & Record<string, (...expected: unknown[]) => MatcherResult>;
 
 const customMatchers = new Map<string, Matcher>();
 
@@ -171,16 +172,16 @@ class Expectation {
     private readonly promiseMode: PromiseMode = "none",
   ) {}
 
-  get not(): Expectation {
-    return new Expectation(this.received, !this.inverted, this.promiseMode);
+  get not(): Assertion {
+    return createExpectation(this.received, !this.inverted, this.promiseMode);
   }
 
-  get resolves(): Expectation {
-    return new Expectation(this.received, this.inverted, "resolves");
+  get resolves(): Assertion {
+    return createExpectation(this.received, this.inverted, "resolves");
   }
 
-  get rejects(): Expectation {
-    return new Expectation(this.received, this.inverted, "rejects");
+  get rejects(): Assertion {
+    return createExpectation(this.received, this.inverted, "rejects");
   }
 
   private apply(name: string, matcher: (received: unknown) => boolean, expected?: unknown): MatcherResult {
@@ -217,6 +218,9 @@ class Expectation {
   toBeUndefined(): MatcherResult { return this.apply("to be undefined", (value) => value === undefined); }
   toBeDefined(): MatcherResult { return this.apply("to be defined", (value) => value !== undefined); }
   toBeNaN(): MatcherResult { return this.apply("to be NaN", (value) => Number.isNaN(value)); }
+  toBeTypeOf(expected: unknown): MatcherResult {
+    return this.apply("to be of type", (value) => typeof value === expected, expected);
+  }
   toBeInstanceOf(expected: unknown): MatcherResult {
     return this.apply("to be an instance of", (value) => typeof expected === "function" && value instanceof expected, expected);
   }
@@ -253,13 +257,10 @@ class Expectation {
   }
   toThrow(expected?: unknown): MatcherResult {
     return this.apply("to throw", (value) => {
+      if (this.promiseMode === "rejects") return matchesThrownValue(value, expected);
       if (typeof value !== "function") return false;
       try { value(); return false; } catch (error) {
-        if (expected === undefined) return true;
-        if (typeof expected === "string") return error instanceof Error && error.message.includes(expected);
-        if (expected instanceof RegExp) return error instanceof Error && expected.test(error.message);
-        if (typeof expected === "function") return error instanceof expected;
-        return equals(error, expected);
+        return matchesThrownValue(error, expected);
       }
     }, expected);
   }
@@ -274,6 +275,13 @@ class Expectation {
   }
   toBeInTheDocument(): MatcherResult {
     return this.apply("to be in the document", (value) => isNode(value) && (value.ownerDocument?.documentElement.contains(value) ?? false));
+  }
+  toBeEmptyDOMElement(): MatcherResult {
+    return this.apply("to be an empty DOM element", (value) => isElement(value)
+      && [...value.childNodes].every((child) => child.nodeType === child.COMMENT_NODE));
+  }
+  toContainElement(expected: unknown): MatcherResult {
+    return this.apply("to contain element", (value) => isElement(value) && isElement(expected) && value.contains(expected), expected);
   }
   toHaveTextContent(expected: unknown): MatcherResult {
     return this.apply("to have text content", (value) => isNode(value) && (expected instanceof RegExp ? expected.test(value.textContent ?? "") : (value.textContent ?? "").includes(String(expected))), expected);
@@ -360,6 +368,17 @@ class Expectation {
   }
 }
 
+function matchesThrownValue(value: unknown, expected: unknown): boolean {
+  if (expected === undefined) return true;
+  if (typeof expected === "string") return value instanceof Error && value.message.includes(expected);
+  if (expected instanceof RegExp) {
+    expected.lastIndex = 0;
+    return value instanceof Error && expected.test(value.message);
+  }
+  if (typeof expected === "function") return value instanceof expected;
+  return equals(value, expected);
+}
+
 function callList(value: unknown): unknown[][] | undefined {
   if (typeof value !== "function" || !("mock" in value)) return undefined;
   const mock = (value as { mock?: { calls?: unknown[][] } }).mock;
@@ -385,14 +404,18 @@ export interface ExpectStatic {
   extend(matchers: Record<string, Matcher>): void;
 }
 
-export const expect = ((received: unknown) => new Proxy(new Expectation(received), {
-  get(target, property, receiver) {
-    if (typeof property === "string" && customMatchers.has(property)) {
-      return (...expected: unknown[]) => target.custom(property, expected);
-    }
-    return Reflect.get(target, property, receiver);
-  },
-})) as ExpectStatic;
+function createExpectation(received: unknown, inverted = false, promiseMode: PromiseMode = "none"): Assertion {
+  return new Proxy(new Expectation(received, inverted, promiseMode), {
+    get(target, property, receiver) {
+      if (typeof property === "string" && customMatchers.has(property)) {
+        return (...expected: unknown[]) => target.custom(property, expected);
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  }) as Assertion;
+}
+
+export const expect = ((received: unknown) => createExpectation(received)) as ExpectStatic;
 
 expect.anything = () => matcher((value) => value !== null && value !== undefined, "Anything");
 expect.any = (constructor) => matcher((value) => {

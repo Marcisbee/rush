@@ -28,6 +28,7 @@ export {
   type MockFunction,
   type MockResult,
   type MockState,
+  type WaitForOptions,
 } from "./mock.js";
 export {
   createPage,
