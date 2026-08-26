@@ -1,4 +1,4 @@
-import { expect, test } from "@rush/browser"
+import { expect, test } from "rush-webtest"
 
 test("receives a reset browser", () => {
   window.dispatchEvent(new Event("rush-leak"))

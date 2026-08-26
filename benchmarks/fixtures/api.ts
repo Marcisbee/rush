@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "@rush/browser"
+import { beforeEach, describe, expect, test } from "rush-webtest"
 
 let hookRuns = 0
 

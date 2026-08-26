@@ -1,4 +1,4 @@
-import { expect, test } from "@rush/browser";
+import { expect, test } from "rush-webtest";
 
 test.session({ clients: ["alice", "bob"] })("isolates realtime application clients", async ({ client }) => {
   const applicationURL = new URL("/__rush/session", location.href).href;

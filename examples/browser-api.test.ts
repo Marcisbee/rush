@@ -1,4 +1,4 @@
-import { expect, fireEvent, screen, test, vi } from "@rush/browser"
+import { expect, fireEvent, screen, test, vi } from "rush-webtest"
 import { readStatus } from "./mock-service.js"
 
 vi.mock("./mock-service.js", () => ({readStatus: () => "mocked"}))

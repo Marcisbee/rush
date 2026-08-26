@@ -1,6 +1,6 @@
 /** @jsxImportSource preact */
 import {h, render} from "preact"
-import { expect, test } from "@rush/browser"
+import { expect, test } from "rush-webtest"
 
 function Counter({value}: {value: number}) {
   return h("button", {"aria-label": "counter"}, value)

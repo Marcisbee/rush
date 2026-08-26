@@ -1,4 +1,4 @@
-import { expect, native, test, waitFor } from "@rush/browser"
+import { expect, native, test, waitFor } from "rush-webtest"
 
 const appOrigin = "http://127.0.0.1:45678"
 

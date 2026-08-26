@@ -1,0 +1,71 @@
+name: Publish rush-webtest
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish and verify npm package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: npm-publish
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.release.tag_name }}
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Validate release source and version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="$(node --print "require('./package.json').version")"
+          test "$RELEASE_TAG" = "v$version"
+          git merge-base --is-ancestor HEAD origin/main
+      - name: Install release toolchain
+        run: |
+          npm install --global npm@11.16.0 --ignore-scripts
+          sudo apt-get update
+          sudo apt-get install --yes libwebkit2gtk-4.1-0 libxtst6 xvfb xauth
+      - name: Build and check release
+        run: |
+          npm ci --ignore-scripts
+          npm run check
+          npm run build
+          go test ./...
+          go build -o bin/rush ./cmd/rush
+          npm pack --dry-run
+      - name: Publish to npm
+        run: npm publish --access public
+      - name: Install from the public registry and run Rush
+        run: |
+          version="$(node --print "require('./package.json').version")"
+          for attempt in 1 2 3 4 5 6; do
+            npm view "rush-webtest@$version" version && break
+            if test "$attempt" = 6; then exit 1; fi
+            sleep 10
+          done
+          consumer="$(mktemp -d)"
+          npm install --prefix "$consumer" --ignore-scripts --no-audit --no-fund "rush-webtest@$version"
+          printf '%s\n' \
+            'import { expect, test } from "rush-webtest";' \
+            'test("loads from npm", () => expect(document.body).toBeInTheDocument());' \
+            > "$consumer/registry-smoke.test.ts"
+          cd "$consumer"
+          "$GITHUB_WORKSPACE/bin/rush" test registry-smoke.test.ts
+      - name: Stop the Rush daemon
+        if: always()
+        run: ./bin/rush stop || true

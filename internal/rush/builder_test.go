@@ -18,7 +18,7 @@ func TestBuilderReusesContextAndSeesEdits(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(fixtureDirectory) })
 	file := filepath.Join(fixtureDirectory, "suite.ts")
-	if err := os.WriteFile(file, []byte("import { expect, test } from '@rush/browser'; test('one', () => expect(1).toBe(1))"), 0600); err != nil {
+	if err := os.WriteFile(file, []byte("import { expect, test } from 'rush-webtest'; test('one', () => expect(1).toBe(1))"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	builder := NewBuilder()
@@ -27,7 +27,7 @@ func TestBuilderReusesContextAndSeesEdits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(file, []byte("import { expect, test } from '@rush/browser'; test('two', () => expect(2).toBe(2))"), 0600); err != nil {
+	if err := os.WriteFile(file, []byte("import { expect, test } from 'rush-webtest'; test('two', () => expect(2).toBe(2))"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	second, _, err := builder.Build(directory, file)
@@ -52,10 +52,10 @@ func TestBuilderBatchesSuitesAndCachesUnchangedDependencyGraph(t *testing.T) {
 	if err := os.WriteFile(dependency, []byte("export const value = 'before'"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(first, []byte("import { value } from './value'; import { test } from '@rush/browser'; test(value, () => {})"), 0600); err != nil {
+	if err := os.WriteFile(first, []byte("import { value } from './value'; import { test } from 'rush-webtest'; test(value, () => {})"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(second, []byte("import { test } from '@rush/browser'; test('second', () => {})"), 0600); err != nil {
+	if err := os.WriteFile(second, []byte("import { test } from 'rush-webtest'; test('second', () => {})"), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -140,7 +140,7 @@ func TestBuilderResolvesBrowserModuleForExternalSuite(t *testing.T) {
 	t.Setenv("RUSH_BROWSER_MODULE", filepath.Join(rushRoot, "dist", "index.js"))
 	externalRoot := t.TempDir()
 	suite := filepath.Join(externalRoot, "external.test.ts")
-	if err := os.WriteFile(suite, []byte("import { expect, test } from '@rush/browser'; test('external', () => expect(1).toBe(1))"), 0600); err != nil {
+	if err := os.WriteFile(suite, []byte("import { expect, test } from 'rush-webtest'; test('external', () => expect(1).toBe(1))"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	builder := NewBuilder()
