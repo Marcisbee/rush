@@ -303,6 +303,7 @@ func (b *Builder) BuildBatch(cwd string, names []string) ([]BuiltSuite, float64,
 			Define: map[string]string{
 				"process.env.NODE_ENV": strconv.Quote(nodeEnvironment),
 				"import.meta.env":      viteEnvironment,
+				"import.meta.hot":      "undefined",
 			},
 		})
 		if ctxErr != nil {

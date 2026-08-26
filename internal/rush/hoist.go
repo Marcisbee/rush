@@ -19,6 +19,12 @@ type mockCall struct {
 	arguments string
 }
 
+type hoistedDeclaration struct {
+	start  int
+	end    int
+	source string
+}
+
 // transformHoistedMocks mirrors the public API's hoist transform at the native
 // builder seam. Static imports are delayed until top-level vi.mock registrations
 // exist. The builder wraps the complete output in the registration promise that
@@ -32,10 +38,17 @@ func transformHoistedMocksWithIDs(source string, resolvedIDs map[string]string) 
 	if err != nil || len(mocks) == 0 {
 		return source, err
 	}
+	hoisted, err := findHoistedDeclarations(source)
+	if err != nil {
+		return "", err
+	}
 
-	replacements := make([]sourceReplacement, 0, len(mocks)+4)
+	replacements := make([]sourceReplacement, 0, len(mocks)+len(hoisted)+4)
 	for _, mock := range mocks {
 		replacements = append(replacements, sourceReplacement{start: mock.start, end: mock.end})
+	}
+	for _, declaration := range hoisted {
+		replacements = append(replacements, sourceReplacement{start: declaration.start, end: declaration.end})
 	}
 	imports, err := findStaticImports(source)
 	if err != nil {
@@ -78,8 +91,19 @@ func transformHoistedMocksWithIDs(source string, resolvedIDs map[string]string) 
 		}
 		registrations = append(registrations, "__rushRegisterMock__("+arguments+");")
 	}
-	return "import { __rushRegisterMock__, __rushImport__ } from \"rush-webtest/internal\";\n" +
-		strings.Join(registrations, "\n") + "\n" + body, nil
+	runtimeImports := "__rushRegisterMock__, __rushImport__"
+	hoistedSources := make([]string, 0, len(hoisted))
+	if len(hoisted) > 0 {
+		runtimeImports += ", vi as __rushVi"
+		for _, declaration := range hoisted {
+			hoistedSources = append(hoistedSources, rewriteHoistedVI(declaration.source))
+		}
+	}
+	header := "import { " + runtimeImports + " } from \"rush-webtest/internal\";\n"
+	if len(hoistedSources) > 0 {
+		header += strings.Join(hoistedSources, "\n") + "\n"
+	}
+	return header + strings.Join(registrations, "\n") + "\n" + body, nil
 }
 
 func transformDependencyImports(source string, resolvedIDs map[string]string) (string, error) {
@@ -159,6 +183,106 @@ func findMockCalls(source string) ([]mockCall, error) {
 		}
 	}
 	return calls, nil
+}
+
+func findHoistedDeclarations(source string) ([]hoistedDeclaration, error) {
+	var declarations []hoistedDeclaration
+	depth := 0
+	for index := 0; index < len(source); {
+		switch {
+		case source[index] == '\'' || source[index] == '"' || source[index] == '`':
+			index = skipSourceString(source, index, source[index])
+		case strings.HasPrefix(source[index:], "//"):
+			index = skipLineComment(source, index)
+		case strings.HasPrefix(source[index:], "/*"):
+			index = skipBlockComment(source, index)
+		case source[index] == '{':
+			depth++
+			index++
+		case source[index] == '}':
+			depth--
+			index++
+		case depth == 0 && isVariableDeclarationKeyword(source, index):
+			lineEnd := strings.IndexAny(source[index:], "\r\n")
+			if lineEnd == -1 {
+				lineEnd = len(source)
+			} else {
+				lineEnd += index
+			}
+			line := source[index:lineEnd]
+			relative := strings.Index(line, "vi.hoisted")
+			if relative == -1 || isIdentifierByte(byteBefore(line, relative)) || isIdentifierByte(byteAt(line, relative+len("vi.hoisted"))) {
+				index++
+				continue
+			}
+			open := index + relative + len("vi.hoisted")
+			for open < len(source) && isSourceSpace(source[open]) {
+				open++
+			}
+			if open >= len(source) || source[open] != '(' {
+				index++
+				continue
+			}
+			close, err := findClosingParenthesis(source, open)
+			if err != nil {
+				return nil, err
+			}
+			end := close + 1
+			for end < len(source) && source[end] != '\n' && source[end] != '\r' {
+				end++
+			}
+			trimmedEnd := end
+			for trimmedEnd > close+1 && (source[trimmedEnd-1] == ' ' || source[trimmedEnd-1] == '\t') {
+				trimmedEnd--
+			}
+			declarations = append(declarations, hoistedDeclaration{
+				start:  index,
+				end:    end,
+				source: strings.TrimSpace(source[index:trimmedEnd]),
+			})
+			index = end
+		default:
+			index++
+		}
+	}
+	return declarations, nil
+}
+
+func isVariableDeclarationKeyword(source string, index int) bool {
+	for _, keyword := range []string{"const", "let", "var"} {
+		if strings.HasPrefix(source[index:], keyword) && !isIdentifierByte(byteBefore(source, index)) && !isIdentifierByte(byteAt(source, index+len(keyword))) {
+			return true
+		}
+	}
+	return false
+}
+
+func rewriteHoistedVI(source string) string {
+	var result strings.Builder
+	result.Grow(len(source) + 16)
+	for index := 0; index < len(source); {
+		switch {
+		case source[index] == '\'' || source[index] == '"' || source[index] == '`':
+			end := skipSourceString(source, index, source[index])
+			result.WriteString(source[index:end])
+			index = end
+		case strings.HasPrefix(source[index:], "//"):
+			end := skipLineComment(source, index)
+			result.WriteString(source[index:end])
+			index = end
+		case strings.HasPrefix(source[index:], "/*"):
+			end := skipBlockComment(source, index)
+			result.WriteString(source[index:end])
+			index = end
+		case strings.HasPrefix(source[index:], "vi") && !isIdentifierByte(byteBefore(source, index)) && !isIdentifierByte(byteAt(source, index+2)):
+			result.WriteString("__rushVi")
+			index += 2
+		default:
+			result.WriteByte(source[index])
+			index++
+		}
+	}
+	return result.String()
 }
 
 func findStaticImports(source string) ([]sourceReplacement, error) {

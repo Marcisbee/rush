@@ -36,7 +36,7 @@ Rush directly bundles Vite's common image, font, and media asset extensions as d
 
 Virtual modules and project-specific asset behavior remain explicit consumer choices. Repeat `--alias module=path` to map a module identifier to a browser-safe file resolved from the project directory. Repeat `--loader extension=loader` to override an extension with `text`, `dataurl`, `base64`, `binary`, `empty`, `json`, `js`, `jsx`, `ts`, `tsx`, or `css`. The `file` and `copy` loaders are intentionally unavailable because Rush executes in-memory bundles and does not expose emitted asset files through a public URL.
 
-Rush defines `import.meta.env.MODE`, `BASE_URL`, `PROD`, `DEV`, and `SSR` for its browser bundles. `MODE` follows `RUSH_NODE_ENV`, which defaults to `test`, `BASE_URL` is `/`, and `SSR` is false. Exported environment variables whose names begin with `VITE_` are included as strings, matching Vite's public-client convention. Rush does not execute a consumer's Vite plugins; aliases and loaders provide the bounded compatibility seam for plugin-generated imports.
+Rush defines `import.meta.env.MODE`, `BASE_URL`, `PROD`, `DEV`, and `SSR` for its browser bundles. `MODE` follows `RUSH_NODE_ENV`, which defaults to `test`, `BASE_URL` is `/`, and `SSR` is false. Exported environment variables whose names begin with `VITE_` are included as strings, matching Vite's public-client convention. `import.meta.hot` is undefined because Rush does not run Vite's HMR client. Rush does not execute a consumer's Vite plugins; aliases and loaders provide the bounded compatibility seam for plugin-generated imports.
 
 The packages under `command`, `app`, `watch`, `reporter`, `artifact`, and `execution` define a broader host integration surface. Debug, reporter, build-plugin, and artifact options remain tested contracts that `cmd/rush` does not accept yet. Do not add those flags to consumer scripts until the native CLI integration lands.
 
@@ -80,7 +80,7 @@ Snapshot files are not implicitly managed by the Linux proof CLI. Hosts configur
 
 ## Mocks and timers
 
-`vi.fn`, `vi.spyOn`, mock implementation and return helpers, clear/reset/restore helpers, fake timers, system-time control, and statically hoisted `vi.mock` are supported. Rush transforms statically analyzable mocks before esbuild executes a suite. Dynamic module patterns that depend on Vitest's Node process or plugin container must be rewritten or kept in Vitest.
+`vi.fn`, `vi.spyOn`, mock implementation and return helpers, clear/reset/restore helpers, fake timers, system-time control, statically hoisted `vi.mock`, and `vi.hoisted` state used by those factories are supported. Rush initializes hoisted state, registers statically analyzable mocks, and then loads the suite's dependencies before esbuild executes the suite. Dynamic module patterns that depend on Vitest's Node process or plugin container must be rewritten or kept in Vitest.
 
 Fake timers are restored after each test. File isolation resets the registry and mock runtime independently for every bundled suite.
 
