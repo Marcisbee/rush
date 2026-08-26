@@ -19,6 +19,7 @@ export interface MockFunction<TArgs extends unknown[] = unknown[], TReturn = unk
   (...args: TArgs): TReturn;
   readonly _isMockFunction: true;
   readonly mock: MockState<TArgs, TReturn>;
+  getMockImplementation(): ((...args: TArgs) => TReturn) | undefined;
   getMockName(): string;
   mockName(name: string): this;
   mockClear(): this;
@@ -79,6 +80,7 @@ export function fn<TArgs extends unknown[] = unknown[], TReturn = unknown>(imple
     _isMockFunction: { value: true },
     mock: { get: () => state },
   });
+  callable.getMockImplementation = () => currentImplementation;
   callable.getMockName = () => name;
   callable.mockName = (value) => { name = value; return callable; };
   callable.mockClear = () => { control.clear(); return callable; };
