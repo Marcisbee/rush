@@ -98,5 +98,6 @@ jobs:
       - name: Attach readiness record to draft release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.draft.outputs.tag_name }}
         run: gh release upload "$RELEASE_TAG" rush-release.json --clobber

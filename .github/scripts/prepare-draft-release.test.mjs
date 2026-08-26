@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -8,6 +9,11 @@ import {
   parseVersion,
   planDraftRelease,
 } from "./prepare-draft-release.mjs";
+
+const draftReleaseWorkflow = await readFile(
+  new URL("../workflows/draft-release.yml", import.meta.url),
+  "utf8",
+);
 
 test("validates and increments stable semantic versions", () => {
   assert.deepEqual(parseVersion("0.1.9"), [0, 1, 9]);
@@ -83,4 +89,12 @@ test("refuses ambiguous or stale semantic-version drafts", () => {
       ),
     /not newer/,
   );
+});
+
+test("the checkout-less readiness job identifies its GitHub repository", () => {
+  const readyJob = draftReleaseWorkflow.match(/\n  ready:\n(?<job>[\s\S]+)$/)?.groups?.job;
+
+  assert.ok(readyJob, "expected the draft release workflow to define a ready job");
+  assert.match(readyJob, /\n          GH_REPO: \$\{\{ github\.repository \}\}/);
+  assert.match(readyJob, /gh release upload "\$RELEASE_TAG" rush-release\.json --clobber/);
 });
