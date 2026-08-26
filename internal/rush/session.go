@@ -62,25 +62,84 @@ type sessionSlot struct {
 // separate process and therefore has an independent WebKit data store even
 // when all clients navigate to the same application origin.
 type SessionPool struct {
-	mu      sync.Mutex
-	slots   []sessionSlot
-	leases  map[string]int
-	nextID  atomic.Uint64
-	factory sessionWorkerFactory
+	mu       sync.Mutex
+	slots    []sessionSlot
+	leases   map[string]int
+	nextID   atomic.Uint64
+	factory  sessionWorkerFactory
+	warmDone chan struct{}
+	warmErr  error
 }
 
-func NewSessionPool(headed bool, size int) *SessionPool {
+func NewSessionPool(headed bool, size int, warmCount ...int) *SessionPool {
 	if size < 1 {
 		size = defaultSessionPoolSize
 	}
-	return newSessionPool(size, func() (sessionWorker, error) { return startSessionProcess(headed) })
+	return newSessionPool(size, func() (sessionWorker, error) { return startSessionProcess(headed) }, warmCount...)
 }
 
-func newSessionPool(size int, factory sessionWorkerFactory) *SessionPool {
-	return &SessionPool{slots: make([]sessionSlot, size), leases: make(map[string]int), factory: factory}
+func newSessionPool(size int, factory sessionWorkerFactory, warmCount ...int) *SessionPool {
+	pool := &SessionPool{
+		slots: make([]sessionSlot, size), leases: make(map[string]int), factory: factory,
+		warmDone: make(chan struct{}),
+	}
+	count := 0
+	if len(warmCount) > 0 {
+		count = min(max(0, warmCount[0]), size)
+	}
+	if count == 0 {
+		close(pool.warmDone)
+	} else {
+		go pool.warm(count)
+	}
+	return pool
+}
+
+func (p *SessionPool) warm(count int) {
+	defer close(p.warmDone)
+	type result struct {
+		index  int
+		worker sessionWorker
+		err    error
+	}
+	results := make(chan result, count)
+	for index := 0; index < count; index++ {
+		go func(index int) {
+			worker, err := p.factory()
+			if err == nil {
+				_, err = worker.call(sessionCommand{ID: fmt.Sprintf("warm-%d", index+1), Action: "ready"})
+			}
+			results <- result{index: index, worker: worker, err: err}
+		}(index)
+	}
+	workers := make([]sessionWorker, count)
+	for range count {
+		result := <-results
+		workers[result.index] = result.worker
+		if result.err != nil && p.warmErr == nil {
+			p.warmErr = result.err
+		}
+	}
+	if p.warmErr != nil {
+		for _, worker := range workers {
+			if worker != nil {
+				_ = worker.close()
+			}
+		}
+		return
+	}
+	p.mu.Lock()
+	for index, worker := range workers {
+		p.slots[index].worker = worker
+	}
+	p.mu.Unlock()
 }
 
 func (p *SessionPool) Create(names []string) ([]SessionLease, error) {
+	<-p.warmDone
+	if p.warmErr != nil {
+		return nil, fmt.Errorf("warm session clients: %w", p.warmErr)
+	}
 	if len(names) == 0 {
 		return nil, errors.New("a session requires at least one client")
 	}
@@ -192,6 +251,7 @@ func (p *SessionPool) releaseLocked(leases []SessionLease) {
 }
 
 func (p *SessionPool) Close() {
+	<-p.warmDone
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	for index := range p.slots {

@@ -81,6 +81,8 @@ func RunSessionWorker(headed bool, input io.Reader, output io.Writer) error {
 				return
 			}
 			switch command.Action {
+			case "ready":
+				writeReply(sessionReply{ID: command.ID, URL: "about:blank"})
 			case "goto":
 				view.Dispatch(func() { view.Navigate(command.URL) })
 				select {

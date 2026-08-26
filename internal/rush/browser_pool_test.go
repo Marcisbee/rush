@@ -57,6 +57,14 @@ func TestConfiguredBrowserPoolSizeIsBounded(t *testing.T) {
 	}
 }
 
+func TestSessionWarmCountsFollowSuiteRealmAssignments(t *testing.T) {
+	got := sessionWarmCountsByRealm(3, []int{0, 2, 0, 3, 1, 4, 2})
+	want := []int{3, 2, 4}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("session warm counts = %v, want %v", got, want)
+	}
+}
+
 func TestRunAcrossRealmsKeepsStableAssignmentsAndResultOrder(t *testing.T) {
 	realms := []browserRealm{&fakeBrowserRealm{}, &fakeBrowserRealm{}, &fakeBrowserRealm{}}
 	bundles := make([]BuiltSuite, 7)

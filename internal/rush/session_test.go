@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 )
 
 type fakeSessionWorker struct {
@@ -12,6 +13,48 @@ type fakeSessionWorker struct {
 	calls   []sessionCommand
 	closed  bool
 	storage map[string]string
+}
+
+func TestSessionPoolWarmsRequestedWorkersConcurrently(t *testing.T) {
+	var mu sync.Mutex
+	started := 0
+	allStarted := make(chan struct{})
+	release := make(chan struct{})
+	pool := newSessionPool(4, func() (sessionWorker, error) {
+		mu.Lock()
+		started++
+		if started == 3 {
+			close(allStarted)
+		}
+		mu.Unlock()
+		<-release
+		return &fakeSessionWorker{storage: make(map[string]string)}, nil
+	}, 3)
+	defer pool.Close()
+
+	type createResult struct {
+		leases []SessionLease
+		err    error
+	}
+	created := make(chan createResult, 1)
+	go func() {
+		leases, err := pool.Create([]string{"alice", "bob", "carol"})
+		created <- createResult{leases: leases, err: err}
+	}()
+	select {
+	case <-allStarted:
+		close(release)
+	case <-time.After(time.Second):
+		close(release)
+		t.Fatal("session workers did not start concurrently")
+	}
+	result := <-created
+	if result.err != nil {
+		t.Fatal(result.err)
+	}
+	if len(result.leases) != 3 {
+		t.Fatalf("leases = %d, want 3", len(result.leases))
+	}
 }
 
 func (w *fakeSessionWorker) call(command sessionCommand) (sessionReply, error) {

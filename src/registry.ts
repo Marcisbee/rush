@@ -239,12 +239,14 @@ async function runTest(
     results.push({ ...base, state: "skipped" }); return;
   }
 
-  const started = performance.now();
+  let executionStarted: number | undefined;
+  let durationMs = 0;
   let context: TestContext | undefined;
   let failure: unknown;
   enterSnapshotTest(fullName);
   try {
     context = await createContext(definition);
+    executionStarted = performance.now();
     for (const suiteDefinition of lineage) for (const hook of suiteDefinition.hooks.beforeEach) await hook(context);
     await definition.callback?.(context);
   } catch (error) {
@@ -256,13 +258,14 @@ async function runTest(
           try { await hook(context); } catch (error) { failure ??= error; }
         }
       }
+      useRealTimers();
+      if (executionStarted !== undefined) durationMs = performance.now() - executionStarted;
       await disposeContext(context);
     }
     leaveSnapshotTest();
     useRealTimers();
   }
 
-  const durationMs = performance.now() - started;
   results.push(failure === undefined
     ? { ...base, durationMs, state: "passed" }
     : isUnsupportedCapabilityError(failure)

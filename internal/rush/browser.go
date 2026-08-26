@@ -46,7 +46,7 @@ type nativeInputCapability struct {
 
 const browserControllerPath = "/__rush/controller"
 
-func NewBrowser(headed bool) (*Browser, error) {
+func NewBrowser(headed bool, sessionWarmCount ...int) (*Browser, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, fmt.Errorf("start browser harness server: %w", err)
@@ -80,10 +80,14 @@ func NewBrowser(headed bool) (*Browser, error) {
 		return nil, fmt.Errorf("%s is unavailable: %w", BackendName(), err)
 	}
 	input, inputErr := newNativeInput()
+	warmCount := 0
+	if len(sessionWarmCount) > 0 {
+		warmCount = sessionWarmCount[0]
+	}
 	browser := &Browser{
 		view:           view,
 		server:         harnessServer,
-		sessions:       NewSessionPool(headed, defaultSessionPoolSize),
+		sessions:       NewSessionPool(headed, defaultSessionPoolSize, warmCount),
 		proxy:          proxy,
 		nativeInput:    input,
 		nativeInputErr: inputErr,
@@ -97,6 +101,7 @@ func NewBrowser(headed bool) (*Browser, error) {
 	if err := view.Bind("__rushReady", func() {
 		browser.once.Do(func() { close(browser.ready) })
 	}); err != nil {
+		browser.sessions.Close()
 		view.Destroy()
 		return nil, fmt.Errorf("bind browser-ready bridge: %w", err)
 	}
