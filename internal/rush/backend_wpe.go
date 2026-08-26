@@ -16,13 +16,6 @@ func BackendName() string { return "WPE WebKit" }
 // SupportsHeaded reports whether this adapter can present a debugging window.
 func SupportsHeaded() bool { return false }
 
-func backendSocketMode(headed bool) string {
-	if headed {
-		return "wpe-headed"
-	}
-	return "wpe-headless"
-}
-
 func prepareBrowser(headed bool) (func(), error) {
 	if headed {
 		return nil, errors.New("the WPE adapter is headless-only; use the default WebKitGTK build for headed debugging")
@@ -56,6 +49,6 @@ func Doctor(output io.Writer) error {
 	}
 	fmt.Fprintln(output, "Go host: available")
 	fmt.Fprintln(output, "headless display: WPE headless platform (no X11 or Wayland compositor required)")
-	fmt.Fprintln(output, "WPE WebKit: checked when the native daemon starts (run `rush test benchmarks/fixtures/assertions.ts`)")
+	fmt.Fprintln(output, "WPE WebKit: checked when the native host starts (run `rush test benchmarks/fixtures/assertions.ts`)")
 	return nil
 }

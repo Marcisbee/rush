@@ -3,6 +3,7 @@ package rush
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -67,6 +68,12 @@ func TestBuilderBatchesSuitesAndCachesUnchangedDependencyGraph(t *testing.T) {
 	}
 	if len(initial) != 2 || initialMS <= 0 || !strings.Contains(initial[0].Source, "before") || !strings.Contains(initial[1].Source, "second") {
 		t.Fatalf("unexpected initial batch: count=%d build=%f", len(initial), initialMS)
+	}
+	watchFiles := builder.WatchFiles()
+	for _, path := range []string{dependency, first, second} {
+		if !slices.Contains(watchFiles, path) {
+			t.Fatalf("watch files %#v do not include %s", watchFiles, path)
+		}
 	}
 	cached, cachedMS, err := builder.BuildBatch(directory, []string{first, second})
 	if err != nil {

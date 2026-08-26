@@ -88,6 +88,3 @@ jobs:
             > "$consumer/registry-smoke.test.ts"
           cd "$consumer"
           "$GITHUB_WORKSPACE/bin/rush" test registry-smoke.test.ts
-      - name: Stop the Rush daemon
-        if: always()
-        run: ./bin/rush stop || true

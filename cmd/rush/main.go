@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -24,7 +26,7 @@ func main() {
 
 func run(args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: rush test [--headed] [--json] FILE... | rush bench | rush doctor | rush stop")
+		return errors.New("usage: rush test [--watch] [--headed] [--json] FILE... | rush bench | rush doctor")
 	}
 	switch args[0] {
 	case "test":
@@ -33,10 +35,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runBenchmarks(args[1:], stdout)
 	case "doctor":
 		return doctor(stdout)
-	case "stop":
-		return stop(args[1:])
-	case "__daemon":
-		return daemon(args[1:])
+	case "__host":
+		return nativeHost(args[1:])
 	case "__session-worker":
 		return sessionWorker(args[1:])
 	default:
@@ -53,7 +53,7 @@ func sessionWorker(args []string) error {
 	return rush.SessionWorkerMain(*headed)
 }
 
-func runTests(args []string, stdout, stderr io.Writer) error {
+func runTests(args []string, stdout, stderr io.Writer) (runErr error) {
 	set := flag.NewFlagSet("test", flag.ContinueOnError)
 	set.SetOutput(stderr)
 	headedHelp := "show " + rush.BackendName() + " with inspector support"
@@ -61,10 +61,14 @@ func runTests(args []string, stdout, stderr io.Writer) error {
 		headedHelp = "unsupported by the WPE headless adapter"
 	}
 	headed := set.Bool("headed", false, headedHelp)
+	watch := set.Bool("watch", false, "rerun tests when their source dependencies change")
 	jsonOutput := set.Bool("json", false, "write a machine-readable response")
 	timeout := set.Duration("timeout", 30*time.Second, "timeout for each suite")
 	if err := set.Parse(args); err != nil {
 		return err
+	}
+	if *watch && *jsonOutput {
+		return errors.New("--json cannot be combined with --watch")
 	}
 	files, err := expandFiles(set.Args())
 	if err != nil {
@@ -77,8 +81,27 @@ func runTests(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	response, err := rush.Send(rush.Request{Action: "run", CWD: cwd, Files: files, Timeout: timeout.Milliseconds()}, *headed)
+	host, err := rush.StartHost(*headed)
 	if err != nil {
+		return err
+	}
+	defer func() { runErr = errors.Join(runErr, host.Close()) }()
+	watchContext := context.Background()
+	if *watch {
+		ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt)
+		watchContext = ctx
+		defer stopSignals()
+		go func() {
+			<-ctx.Done()
+			_ = host.Close()
+		}()
+	}
+	request := rush.Request{Action: "run", CWD: cwd, Files: files, Timeout: timeout.Milliseconds()}
+	response, err := host.Send(request)
+	if *watch && watchContext.Err() != nil {
+		return nil
+	}
+	if err != nil && !*watch {
 		return err
 	}
 	if *jsonOutput {
@@ -86,7 +109,39 @@ func runTests(args []string, stdout, stderr io.Writer) error {
 		encoder.SetIndent("", "  ")
 		return encoder.Encode(response)
 	}
-	return printResponse(stdout, response)
+	if err != nil {
+		fmt.Fprintln(stderr, "rush:", err)
+	} else if printErr := printResponse(stdout, response); printErr != nil && !*watch {
+		return printErr
+	}
+	if !*watch {
+		return nil
+	}
+
+	watched := mergeWatchFiles(cwd, files, response.WatchFiles)
+	fmt.Fprintln(stdout, "Watching for changes; press Ctrl+C to stop.")
+	for {
+		changed, waitErr := waitForFileChange(watchContext, watched)
+		if errors.Is(waitErr, context.Canceled) {
+			return nil
+		}
+		if waitErr != nil {
+			return waitErr
+		}
+		fmt.Fprintf(stdout, "\nChange detected: %s\n", changed)
+		response, err = host.Send(request)
+		if watchContext.Err() != nil {
+			return nil
+		}
+		if len(response.WatchFiles) > 0 {
+			watched = mergeWatchFiles(cwd, files, response.WatchFiles)
+		}
+		if err != nil {
+			fmt.Fprintln(stderr, "rush:", err)
+			continue
+		}
+		_ = printResponse(stdout, response)
+	}
 }
 
 func expandFiles(arguments []string) ([]string, error) {
@@ -147,15 +202,17 @@ func printResponse(output io.Writer, response rush.Response) error {
 	return nil
 }
 
-func daemon(args []string) error {
-	set := flag.NewFlagSet("__daemon", flag.ContinueOnError)
-	socket := set.String("socket", "", "daemon socket")
+func nativeHost(args []string) error {
+	signal.Ignore(os.Interrupt)
+	defer signal.Reset(os.Interrupt)
+	set := flag.NewFlagSet("__host", flag.ContinueOnError)
+	socket := set.String("socket", "", "host socket")
 	headed := set.Bool("headed", false, "show the browser")
 	if err := set.Parse(args); err != nil {
 		return err
 	}
 	if *socket == "" {
-		return errors.New("daemon socket is required")
+		return errors.New("host socket is required")
 	}
 	var ready *os.File
 	if raw := os.Getenv("RUSH_READY_FD"); raw != "" {
@@ -165,16 +222,15 @@ func daemon(args []string) error {
 		}
 		ready = os.NewFile(uintptr(fd), "rush-ready")
 	}
-	return rush.RunDaemon(*socket, *headed, ready)
-}
-
-func stop(args []string) error {
-	set := flag.NewFlagSet("stop", flag.ContinueOnError)
-	headed := set.Bool("headed", false, "stop the headed daemon instead")
-	if err := set.Parse(args); err != nil {
-		return err
+	var lifetime *os.File
+	if raw := os.Getenv("RUSH_LIFETIME_FD"); raw != "" {
+		fd, err := strconv.Atoi(raw)
+		if err != nil {
+			return err
+		}
+		lifetime = os.NewFile(uintptr(fd), "rush-lifetime")
 	}
-	return rush.Stop(*headed)
+	return rush.RunHost(*socket, *headed, ready, lifetime)
 }
 
 func doctor(output io.Writer) error {

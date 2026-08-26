@@ -45,12 +45,13 @@ type SuiteResult struct {
 }
 
 type Response struct {
-	Error     string        `json:"error,omitempty"`
-	Cold      bool          `json:"cold"`
-	StartupMS float64       `json:"startup_ms"`
-	WallMS    float64       `json:"wall_ms"`
-	Profile   Profile       `json:"profile"`
-	Suites    []SuiteResult `json:"suites,omitempty"`
+	Error      string        `json:"error,omitempty"`
+	Cold       bool          `json:"cold"`
+	StartupMS  float64       `json:"startup_ms"`
+	WallMS     float64       `json:"wall_ms"`
+	Profile    Profile       `json:"profile"`
+	Suites     []SuiteResult `json:"suites,omitempty"`
+	WatchFiles []string      `json:"watch_files,omitempty"`
 }
 
 func milliseconds(d time.Duration) float64 {

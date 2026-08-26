@@ -1,6 +1,6 @@
 # Rush
 
-Rush is a persistent WebView-native JavaScript and TypeScript test runner. Tests execute in a real browser engine while a native host keeps the browser and incremental esbuild graph warm between runs.
+Rush is a WebView-native JavaScript and TypeScript test runner. One-shot commands clean up their native host before exiting; watch mode keeps the browser and incremental esbuild graph warm until interrupted.
 
 Rush's browser API is published on npm as `rush-webtest`. Matching Linux and macOS native hosts are attached to each GitHub release.
 
@@ -15,7 +15,7 @@ Rush's browser API is published on npm as `rush-webtest`. Matching Linux and mac
 | Windows WebView2 adapter | Go adapter and validation harness; not wired to the Go CLI |
 | Browser API | Vitest-like suites, assertions, mocks, fake timers, snapshots, Testing Library queries, and locators |
 | Execution | Bounded parallel browser realms, app navigation/interception, and isolated named clients |
-| Host contracts | Watch selection, reporters, and failure artifacts are tested packages; the Linux CLI does not expose them yet |
+| Host contracts | Dependency-aware watch mode is exposed by the CLI; reporters and failure artifacts remain tested package contracts |
 
 The distinction matters: a compiled adapter or passing contract test is not automatically an end-user CLI capability. See [Compatibility and platform status](docs/compatibility.md) before choosing Rush for a suite.
 
@@ -36,9 +36,7 @@ make build
 ./bin/rush doctor
 ./bin/rush test examples/basic.test.ts examples/browser-api.test.ts
 RUSH_WEBVIEW_POOL_SIZE=1 ./bin/rush test examples/app-automation.test.ts
-./bin/rush stop
 ./bin/rush test examples/session.test.ts
-./bin/rush stop
 ```
 
 Ubuntu releases using the 64-bit time ABI may call the GTK package `libgtk-3-0t64`; installing `libwebkit2gtk-4.1-0` normally resolves the correct runtime dependency.
@@ -51,10 +49,9 @@ npm ci
 make build
 ./bin/rush doctor
 ./bin/rush test examples/basic.test.ts examples/browser-api.test.ts
-./bin/rush stop
 ```
 
-Rush starts an authenticated Xvfb display for headless runs and keeps its daemon warm. Headed mode requires an existing `DISPLAY` or `WAYLAND_DISPLAY`:
+Rush starts an authenticated Xvfb display for each headless command and removes it when the command exits. Headed mode requires an existing `DISPLAY` or `WAYLAND_DISPLAY`:
 
 ```sh
 ./bin/rush test --headed examples/browser-api.test.ts
@@ -82,7 +79,7 @@ App tests use real navigation through Rush's loopback proxy, request interceptio
 
 ## Isolation and performance
 
-Hidden Linux and macOS runs keep up to three browser realms warm by default; `RUSH_WEBVIEW_POOL_SIZE` selects one through four realms. Each file receives its own esbuild bundle, module graph, registry, and mock runtime. Before reuse, Rush clears DOM and style state, timers, listeners, cookies, local and session storage, IndexedDB, Cache Storage, service workers, performance entries, and bundle globals.
+Hidden Linux and macOS commands use up to three browser realms by default; `RUSH_WEBVIEW_POOL_SIZE` selects one through four realms. Watch mode reuses those realms between reruns. Each file receives its own esbuild bundle, module graph, registry, and mock runtime. Before reuse, Rush clears DOM and style state, timers, listeners, cookies, local and session storage, IndexedDB, Cache Storage, service workers, performance entries, and bundle globals.
 
 The benchmark command validates pass counts and the declared product targets from raw repeated samples:
 
@@ -96,13 +93,12 @@ Normal and JSON output report build, runner, application, network, intentional-w
 ## Commands
 
 ```text
-rush test [--headed] [--json] [--timeout DURATION] FILE...
+rush test [--watch] [--headed] [--json] [--timeout DURATION] FILE...
 rush bench [--repeat N] [--cold-repeat N] [--json]
 rush doctor
-rush stop [--headed]
 ```
 
-Shell globs and multiple files are accepted. The adapter-independent command packages also define the intended `run`, `watch`, `debug`, reporter, and artifact surface, but those options are not accepted by `./bin/rush` yet.
+Shell globs and multiple files are accepted. `--watch` performs an initial run, watches the complete esbuild input set, and reruns with the same command-scoped browser host until `Ctrl+C`. The adapter-independent command packages also define the intended `run`, `debug`, reporter, and artifact surface, but those options are not accepted by `./bin/rush` yet.
 
 ## Documentation
 
@@ -130,7 +126,6 @@ npm ci
 make test
 ./bin/rush test examples/basic.test.ts examples/browser-api.test.ts examples/javascript.test.js examples/react.test.tsx
 RUSH_WEBVIEW_POOL_SIZE=1 ./bin/rush test examples/app-automation.test.ts
-./bin/rush stop
 ./bin/rush test examples/session.test.ts
 ./bin/rush bench --repeat 5 --cold-repeat 3 --json
 go build ./cmd/rush # uses Objective-C/cgo automatically on macOS

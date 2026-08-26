@@ -85,6 +85,3 @@ jobs:
           path: .rush/ci/benchmarks.json
           if-no-files-found: warn
           retention-days: 14
-      - name: Stop warm daemon
-        if: always()
-        run: ./bin/rush stop || true

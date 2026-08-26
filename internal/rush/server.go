@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -29,8 +30,14 @@ type Server struct {
 	nextID  atomic.Uint64
 }
 
-func RunDaemon(socket string, headed bool, ready *os.File) error {
+func RunHost(socket string, headed bool, ready, lifetime *os.File) error {
 	started := time.Now()
+	if directory, ok := scopedHostDirectory(socket); ok {
+		defer os.RemoveAll(directory)
+	}
+	if lifetime != nil {
+		defer lifetime.Close()
+	}
 	stopDisplay, err := prepareBrowser(headed)
 	if err != nil {
 		writeReady(ready, err)
@@ -71,6 +78,9 @@ func RunDaemon(socket string, headed bool, ready *os.File) error {
 	server := &Server{socket: socket, browser: browser, builder: NewBuilder(), started: started}
 	server.cold.Store(true)
 	defer server.builder.Close()
+	if lifetime != nil {
+		go stopWhenClosed(lifetime, browser.Stop)
+	}
 
 	go func() {
 		select {
@@ -90,6 +100,30 @@ func RunDaemon(socket string, headed bool, ready *os.File) error {
 	}()
 	browser.RunLoop()
 	return nil
+}
+
+func scopedHostDirectory(socket string) (string, bool) {
+	if filepath.Base(socket) != "host.sock" {
+		return "", false
+	}
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		return "", false
+	}
+	root, err := filepath.Abs(filepath.Join(cache, "rush"))
+	if err != nil {
+		return "", false
+	}
+	directory, err := filepath.Abs(filepath.Dir(socket))
+	if err != nil || filepath.Dir(directory) != root || !strings.HasPrefix(filepath.Base(directory), "host-") {
+		return "", false
+	}
+	return directory, true
+}
+
+func stopWhenClosed(lifetime io.Reader, stop func()) {
+	_, _ = io.Copy(io.Discard, lifetime)
+	stop()
 }
 
 func startVirtualDisplay() (func(), error) {
@@ -273,7 +307,7 @@ func (s *Server) handle(connection net.Conn) {
 		return
 	}
 	if request.Action != "run" {
-		_ = encoder.Encode(Response{Error: "unknown daemon action: " + request.Action})
+		_ = encoder.Encode(Response{Error: "unknown host action: " + request.Action})
 		return
 	}
 
@@ -295,6 +329,7 @@ func (s *Server) run(request Request) Response {
 		timeout = time.Duration(request.Timeout) * time.Millisecond
 	}
 	bundles, buildMS, err := s.builder.BuildBatch(request.CWD, request.Files)
+	response.WatchFiles = s.builder.WatchFiles()
 	if err != nil {
 		response.Error = err.Error()
 		response.WallMS = milliseconds(time.Since(started))

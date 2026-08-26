@@ -5,10 +5,9 @@
 The source-built Linux proof accepts these commands:
 
 ```text
-rush test [--headed] [--json] [--timeout DURATION] FILE...
+rush test [--watch] [--headed] [--json] [--timeout DURATION] FILE...
 rush bench [--repeat N] [--cold-repeat N] [--json]
 rush doctor
-rush stop [--headed]
 ```
 
 Examples:
@@ -18,14 +17,16 @@ Examples:
 ./bin/rush test examples/browser-api.test.ts examples/javascript.test.js
 ./bin/rush test --json 'examples/*.test.ts'
 ./bin/rush test --timeout 45s --headed examples/react.test.tsx
-./bin/rush stop
+./bin/rush test --watch examples/react.test.tsx
 ```
 
-`test` expands shell-style file globs, removes duplicate paths, and rejects directories. The timeout applies separately to each suite. Normal output lists failures, per-suite timing phases, result counts, request wall time, and cold startup when the command started the browser. `--json` emits the native response instead.
+`test` expands shell-style file globs, removes duplicate paths, and rejects directories. The timeout applies separately to each suite. Normal output lists failures, per-suite timing phases, result counts, request wall time, and cold startup. `--json` emits the native response instead. Every one-shot invocation owns and cleans up its native browser host before exiting.
 
-`doctor` validates the selected WebView backend. `stop` stops the headless daemon; `stop --headed` stops the separate debug daemon.
+`--watch` keeps that command's browser pool and incremental esbuild context warm, watches the input files reported by esbuild, and reruns the selected suites after a dependency changes. Test failures are reported without ending the watch loop. Press `Ctrl+C` to stop and clean up the host. `--json` and `--watch` are intentionally mutually exclusive because watch produces multiple results.
 
-The packages under `command`, `app`, `watch`, `reporter`, `artifact`, and `execution` define a broader host integration surface. Their `run`, `watch`, `debug`, reporter, build-plugin, and artifact options are tested contracts, but `cmd/rush` does not accept them yet. Do not add those flags to consumer scripts until the native CLI integration lands.
+`doctor` validates the selected WebView backend.
+
+The packages under `command`, `app`, `watch`, `reporter`, `artifact`, and `execution` define a broader host integration surface. Debug, reporter, build-plugin, and artifact options remain tested contracts that `cmd/rush` does not accept yet. Do not add those flags to consumer scripts until the native CLI integration lands.
 
 ## Registering tests
 

@@ -50,12 +50,11 @@ The repository intentionally separates:
 3. Native browser adapters.
 4. The executable that wires one adapter to those contracts.
 
-Passing tests in one layer do not imply that another layer is integrated. The current Linux executable exposes its native daemon directly through `test`, `bench`, `doctor`, and `stop`, including app and session execution. It does not yet wire the general `run`, `watch`, `debug`, reporter, or artifact command contracts.
+Passing tests in one layer do not imply that another layer is integrated. The current Linux executable exposes browser, app, and session execution through `test`, command-scoped warm reuse through `test --watch`, and explicit performance scenarios through `bench`. It does not yet wire the general debug, reporter, or artifact command contracts.
 
 ## Known operational limits
 
-- The daemon remains alive until `rush stop`; pin the executable revision and stop old daemons after changing builds.
-- Headed and headless daemons are intentionally distinct.
+- Every one-shot command owns a unique native host and waits for it to stop before exiting. Watch mode keeps only its foreground command's host alive until interrupted.
 - On Linux, run trusted-input files with `RUSH_WEBVIEW_POOL_SIZE=1` in a separate invocation. Native X11 focus is process-global and is not isolated from concurrent pooled realm or session navigation.
 - WPE deployment must include matching helper processes and normal WebKit sandbox support; disabling the sandbox is not a supported configuration.
 - Performance results describe a host, engine, fixture, and repeat method. They are not universal latency guarantees for applications, networks, realtime coordination, or intentional waits.

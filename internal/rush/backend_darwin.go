@@ -12,13 +12,6 @@ import (
 func BackendName() string  { return "WKWebView" }
 func SupportsHeaded() bool { return true }
 
-func backendSocketMode(headed bool) string {
-	if headed {
-		return "wkwebview-headed"
-	}
-	return "wkwebview-hidden"
-}
-
 func prepareBrowser(bool) (func(), error) { return func() {}, nil }
 
 func Doctor(output io.Writer) error {

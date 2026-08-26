@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,9 +23,10 @@ type buildContext struct {
 }
 
 type Builder struct {
-	mu       sync.Mutex
-	contexts map[string]*buildContext
-	order    []string
+	mu             sync.Mutex
+	contexts       map[string]*buildContext
+	order          []string
+	lastWatchFiles []string
 }
 
 const builderContextCacheLimit = 8
@@ -192,6 +194,8 @@ func (b *Builder) BuildBatch(cwd string, names []string) ([]BuiltSuite, float64,
 		b.contexts[cacheKey] = cached
 		b.order = append(b.order, cacheKey)
 	}
+	b.setLastWatchFiles(cached.inputs)
+	b.addLastWatchFiles(absFiles...)
 	if len(cached.outputs) > 0 && inputsUnchanged(cached.inputs) {
 		return append([]BuiltSuite(nil), cached.outputs...), 0, nil
 	}
@@ -200,6 +204,16 @@ func (b *Builder) BuildBatch(cwd string, names []string) ([]BuiltSuite, float64,
 	result := cached.context.Rebuild()
 	elapsed := milliseconds(time.Since(started))
 	if len(result.Errors) > 0 {
+		for _, message := range result.Errors {
+			if message.Location == nil || message.Location.File == "" {
+				continue
+			}
+			path := message.Location.File
+			if !filepath.IsAbs(path) {
+				path = filepath.Join(cwd, path)
+			}
+			b.addLastWatchFiles(filepath.Clean(path))
+		}
 		return nil, elapsed, errors.New(formatMessages(result.Errors))
 	}
 	if len(result.OutputFiles) != len(names) {
@@ -224,7 +238,37 @@ func (b *Builder) BuildBatch(cwd string, names []string) ([]BuiltSuite, float64,
 	}
 	cached.inputs = inputs
 	cached.outputs = outputs
+	b.setLastWatchFiles(inputs)
 	return append([]BuiltSuite(nil), outputs...), elapsed, nil
+}
+
+func (b *Builder) WatchFiles() []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]string(nil), b.lastWatchFiles...)
+}
+
+func (b *Builder) setLastWatchFiles(inputs map[string]fileStamp) {
+	files := make([]string, 0, len(inputs))
+	for path := range inputs {
+		files = append(files, path)
+	}
+	sort.Strings(files)
+	b.lastWatchFiles = files
+}
+
+func (b *Builder) addLastWatchFiles(paths ...string) {
+	seen := make(map[string]bool, len(b.lastWatchFiles)+len(paths))
+	for _, path := range b.lastWatchFiles {
+		seen[path] = true
+	}
+	for _, path := range paths {
+		if !seen[path] {
+			seen[path] = true
+			b.lastWatchFiles = append(b.lastWatchFiles, path)
+		}
+	}
+	sort.Strings(b.lastWatchFiles)
 }
 
 func buildInputStamps(cwd, metafile string) (map[string]fileStamp, error) {

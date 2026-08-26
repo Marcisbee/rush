@@ -2,7 +2,6 @@ package rush
 
 import (
 	"bufio"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,45 +12,139 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
+	"sync"
 	"time"
 )
 
-func SocketPath(headed bool) (string, error) {
+// Host owns one native browser process for the lifetime of a CLI command.
+// Closing the host, or losing the parent-side lifetime pipe, stops the browser
+// and prevents an invisible process from surviving its invoking command.
+type Host struct {
+	socket    string
+	directory string
+	command   *exec.Cmd
+	lifetime  *os.File
+	wait      chan error
+	closeOnce sync.Once
+	closeErr  error
+}
+
+func StartHost(headed bool) (*Host, error) {
+	if headed && !SupportsHeaded() {
+		return nil, fmt.Errorf("the %s adapter is headless-only; use the default WebKitGTK build for headed debugging", BackendName())
+	}
+	if headed && runtime.GOOS == "linux" && os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {
+		return nil, errors.New("headed mode requires DISPLAY or WAYLAND_DISPLAY; start a desktop session or omit --headed")
+	}
+	if !headed && runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		return nil, fmt.Errorf("the Rush CLI does not have a native adapter for %s", runtime.GOOS)
+	}
+
+	directory, err := createHostDirectory()
+	if err != nil {
+		return nil, err
+	}
+	host := &Host{
+		socket:    filepath.Join(directory, "host.sock"),
+		directory: directory,
+		wait:      make(chan error, 1),
+	}
+	if err := host.start(headed); err != nil {
+		_ = os.RemoveAll(directory)
+		return nil, err
+	}
+	return host, nil
+}
+
+func createHostDirectory() (string, error) {
 	cache, err := os.UserCacheDir()
 	if err != nil {
 		return "", err
 	}
-	executable, err := os.Executable()
-	if err != nil {
+	root := filepath.Join(cache, "rush")
+	if err := os.MkdirAll(root, 0700); err != nil {
 		return "", err
 	}
-	executable, err = filepath.Abs(executable)
-	if err != nil {
-		return "", err
-	}
-	identity := sha256.Sum256([]byte(executable))
-	mode := backendSocketMode(headed)
-	return filepath.Join(cache, "rush", fmt.Sprintf("daemon-%x-%s.sock", identity[:6], mode)), nil
+	return os.MkdirTemp(root, "host-")
 }
 
-func Send(request Request, headed bool) (Response, error) {
-	socket, err := SocketPath(headed)
+func (h *Host) start(headed bool) error {
+	executable, err := os.Executable()
 	if err != nil {
-		return Response{}, err
+		return err
 	}
-	connection, err := net.DialTimeout("unix", socket, 100*time.Millisecond)
+	readyReader, readyWriter, err := os.Pipe()
 	if err != nil {
-		if request.Action != "run" {
-			return Response{}, err
+		return err
+	}
+	defer readyReader.Close()
+	lifetimeReader, lifetimeWriter, err := os.Pipe()
+	if err != nil {
+		readyWriter.Close()
+		return err
+	}
+
+	args := []string{"__host", "--socket", h.socket}
+	if headed {
+		args = append(args, "--headed")
+	}
+	command := exec.Command(executable, args...)
+	command.ExtraFiles = []*os.File{readyWriter, lifetimeReader}
+	command.Env = append(os.Environ(), "RUSH_READY_FD=3", "RUSH_LIFETIME_FD=4")
+	logPath := filepath.Join(h.directory, "host.log")
+	log, logErr := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	if logErr != nil {
+		readyWriter.Close()
+		lifetimeReader.Close()
+		lifetimeWriter.Close()
+		return logErr
+	}
+	command.Stdout = log
+	command.Stderr = log
+	if err := command.Start(); err != nil {
+		log.Close()
+		readyWriter.Close()
+		lifetimeReader.Close()
+		lifetimeWriter.Close()
+		return err
+	}
+	log.Close()
+	readyWriter.Close()
+	lifetimeReader.Close()
+
+	result := make(chan string, 1)
+	go func() {
+		line, _ := bufio.NewReader(readyReader).ReadString('\n')
+		result <- strings.TrimSpace(line)
+	}()
+	select {
+	case message := <-result:
+		if message != "ready" {
+			lifetimeWriter.Close()
+			_ = command.Process.Kill()
+			_ = command.Wait()
+			if strings.HasPrefix(message, "error:") {
+				return errors.New(strings.TrimPrefix(message, "error:"))
+			}
+			return fmt.Errorf("Rush host exited before it became ready; see %s", logPath)
 		}
-		if err := spawnDaemon(socket, headed); err != nil {
-			return Response{}, err
-		}
-		connection, err = net.DialTimeout("unix", socket, 2*time.Second)
-		if err != nil {
-			return Response{}, fmt.Errorf("connect to Rush daemon after startup: %w", err)
-		}
+	case <-time.After(20 * time.Second):
+		lifetimeWriter.Close()
+		_ = command.Process.Kill()
+		_ = command.Wait()
+		return fmt.Errorf("Rush host did not become ready within 20s; see %s", logPath)
+	}
+
+	h.command = command
+	h.lifetime = lifetimeWriter
+	go func() { h.wait <- command.Wait() }()
+	return nil
+}
+
+func (h *Host) Send(request Request) (Response, error) {
+	connection, err := net.DialTimeout("unix", h.socket, 2*time.Second)
+	if err != nil {
+		return Response{}, fmt.Errorf("connect to Rush host: %w", err)
 	}
 	defer connection.Close()
 	if err := json.NewEncoder(connection).Encode(request); err != nil {
@@ -67,91 +160,32 @@ func Send(request Request, headed bool) (Response, error) {
 	return response, nil
 }
 
-func Stop(headed bool) error {
-	socket, pathErr := SocketPath(headed)
-	if pathErr != nil {
-		return pathErr
-	}
-	_, err := Send(Request{Action: "shutdown"}, headed)
-	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, os.ErrNotExist) && !strings.Contains(err.Error(), "connect:") {
-		return err
-	}
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, statErr := os.Stat(socket); errors.Is(statErr, os.ErrNotExist) {
-			return nil
+func (h *Host) Close() error {
+	h.closeOnce.Do(func() {
+		_, sendErr := h.Send(Request{Action: "shutdown"})
+		if sendErr != nil && !errors.Is(sendErr, io.EOF) && !strings.Contains(sendErr.Error(), "connect") {
+			h.closeErr = sendErr
 		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	return errors.New("Rush daemon did not stop within 2s")
-}
-
-func spawnDaemon(socket string, headed bool) error {
-	if err := os.MkdirAll(filepath.Dir(socket), 0700); err != nil {
-		return err
-	}
-	executable, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	reader, writer, err := os.Pipe()
-	if err != nil {
-		return err
-	}
-	defer reader.Close()
-	args := []string{"__daemon", "--socket", socket}
-	var command *exec.Cmd
-	if headed {
-		if !SupportsHeaded() {
-			writer.Close()
-			return fmt.Errorf("the %s adapter is headless-only; use the default WebKitGTK build for headed debugging", BackendName())
+		if h.lifetime != nil {
+			_ = h.lifetime.Close()
 		}
-		if runtime.GOOS == "linux" && os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {
-			writer.Close()
-			return errors.New("headed mode requires DISPLAY or WAYLAND_DISPLAY; start a desktop session or omit --headed")
+		select {
+		case waitErr := <-h.wait:
+			if waitErr != nil && h.closeErr == nil {
+				h.closeErr = waitErr
+			}
+		case <-time.After(2 * time.Second):
+			if h.command != nil && h.command.Process != nil {
+				_ = h.command.Process.Kill()
+			}
+			<-h.wait
+			if h.closeErr == nil {
+				h.closeErr = errors.New("Rush host did not stop within 2s and was killed")
+			}
 		}
-		args = append(args, "--headed")
-		command = exec.Command(executable, args...)
-	} else {
-		if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
-			writer.Close()
-			return fmt.Errorf("the Rush CLI does not have a native adapter for %s", runtime.GOOS)
+		if removeErr := os.RemoveAll(h.directory); removeErr != nil && h.closeErr == nil {
+			h.closeErr = removeErr
 		}
-		command = exec.Command(executable, args...)
-	}
-	command.ExtraFiles = []*os.File{writer}
-	command.Env = append(os.Environ(), "RUSH_READY_FD=3")
-	logPath := socket + ".log"
-	log, logErr := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
-	if logErr != nil {
-		writer.Close()
-		return logErr
-	}
-	defer log.Close()
-	command.Stdout = log
-	command.Stderr = log
-	command.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	if err := command.Start(); err != nil {
-		writer.Close()
-		return err
-	}
-	writer.Close()
-
-	result := make(chan string, 1)
-	go func() {
-		line, _ := bufio.NewReader(reader).ReadString('\n')
-		result <- strings.TrimSpace(line)
-	}()
-	select {
-	case message := <-result:
-		if message == "ready" {
-			return nil
-		}
-		if strings.HasPrefix(message, "error:") {
-			return errors.New(strings.TrimPrefix(message, "error:"))
-		}
-		return fmt.Errorf("Rush daemon exited before it became ready; see %s", logPath)
-	case <-time.After(20 * time.Second):
-		return fmt.Errorf("Rush daemon did not become ready within 20s; see %s", logPath)
-	}
+	})
+	return h.closeErr
 }

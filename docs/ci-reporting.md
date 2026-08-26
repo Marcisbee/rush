@@ -67,6 +67,6 @@ For a private consumer trial:
 3. Run `doctor` before tests so a loader or runtime mismatch fails early.
 4. Keep the former test command available as the rollback path.
 5. Store raw JSON or JUnit output and failure artifacts only in private, retention-limited CI storage.
-6. Stop the warm daemon in an `always()` cleanup step.
+6. Let the test command's scoped native host clean itself up before the step exits.
 
 Do not turn benchmark samples into a public badge or release claim unless the measured workload, environment, sample count, and result remain reproducible.

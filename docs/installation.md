@@ -43,9 +43,9 @@ Fedora:
 sudo dnf install webkit2gtk4.1 gtk3 libXtst xorg-x11-server-Xvfb xorg-x11-xauth
 ```
 
-Headless mode starts an authenticated Xvfb display and keeps it with the warm daemon. In a WSL or container environment where `/tmp/.X11-unix` cannot safely host a local socket, Rush uses a loopback TCP display protected by a generated Xauthority cookie.
+Headless mode starts an authenticated Xvfb display for the current command and cleans it up on exit. In watch mode, the display remains warm until the foreground command is interrupted. In a WSL or container environment where `/tmp/.X11-unix` cannot safely host a local socket, Rush uses a loopback TCP display protected by a generated Xauthority cookie.
 
-Headed mode uses the current desktop and requires `DISPLAY` or `WAYLAND_DISPLAY`. It enables the WebView debug flag and uses a separate daemon from headless mode. Trusted input uses XTest on the selected X11 display and fails explicitly when `libXtst` or a usable display is unavailable.
+Headed mode uses the current desktop and requires `DISPLAY` or `WAYLAND_DISPLAY`. It enables the WebView debug flag. Trusted input uses XTest on the selected X11 display and fails explicitly when `libXtst` or a usable display is unavailable.
 
 ## Linux: optional WPE headless build
 
@@ -71,7 +71,6 @@ npm ci
 make build
 ./bin/rush doctor
 ./bin/rush test examples/basic.test.ts
-./bin/rush stop
 ```
 
 The build uses cgo to compile a thin Objective-C C-ABI shim directly into `bin/rush`. The resulting executable links Apple AppKit, WebKit, ApplicationServices, and CoreGraphics system frameworks. It does not extract a WebView dynamic library or start a Swift/helper adapter process.
@@ -117,6 +116,6 @@ For local development against an unpublished browser API build, set an absolute 
 | `RUSH_WEBVIEW_POOL_SIZE` | Number of reusable Linux or macOS browser realms, from one through four | Up to three hidden; one headed |
 | `DISPLAY` / `WAYLAND_DISPLAY` | Select the existing desktop for `--headed` | Rush-managed Xvfb in headless Linux mode |
 
-`RUSH_READY_FD` is an internal daemon handshake and is not user configuration.
+`RUSH_READY_FD` and `RUSH_LIFETIME_FD` are internal host lifecycle channels and are not user configuration.
 
-Changing the JSX import source or Node environment creates a distinct incremental build context. Stop the daemon after changing toolchain revisions or local package paths so the next run starts with an unambiguous process and module graph.
+Changing the JSX import source or Node environment creates a distinct incremental build context during watch mode. A new invocation always starts with the current executable, environment, and local package paths.

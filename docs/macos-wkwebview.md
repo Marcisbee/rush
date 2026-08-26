@@ -1,6 +1,6 @@
 # macOS WKWebView adapter
 
-Rush's macOS backend is compiled into the normal Go executable. Go owns the daemon, browser pool, session workers, protocol, incremental builder, and test lifecycle. A small Objective-C shim under `internal/wkwebview` exposes only a C ABI for AppKit and WKWebView operations; cgo connects that ABI to the existing Go WebView contract.
+Rush's macOS backend is compiled into the normal Go executable. Go owns the command-scoped native host, browser pool, session workers, protocol, incremental builder, and test lifecycle. A small Objective-C shim under `internal/wkwebview` exposes only a C ABI for AppKit and WKWebView operations; cgo connects that ABI to the existing Go WebView contract.
 
 ## Runtime behavior
 
@@ -27,7 +27,6 @@ The native dependencies shown by `otool` must be Apple system libraries and fram
 make test
 ./bin/rush doctor
 ./bin/rush test examples/basic.test.ts examples/browser-api.test.ts examples/javascript.test.js
-./bin/rush stop
 ```
 
 The macOS GitHub Actions job runs the same adapter test and normal CLI path on `macos-14`, then audits the executable's dynamic linkage.
