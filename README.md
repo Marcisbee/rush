@@ -2,7 +2,7 @@
 
 Rush is a persistent WebView-native JavaScript and TypeScript test runner. Tests execute in a real browser engine while a native host keeps the browser and incremental esbuild graph warm between runs.
 
-Rush's browser API is published on npm as `rush-webtest`. The native `rush` host is built from this repository while binary distribution is still being designed.
+Rush's browser API is published on npm as `rush-webtest`. Matching Linux and macOS native hosts are attached to each GitHub release.
 
 ## What works on this revision
 
@@ -27,7 +27,7 @@ Install the browser API in the project that owns the tests:
 npm install --save-dev rush-webtest
 ```
 
-Build the native host from a matching Rush revision. Install Go 1.24 or newer, Node.js 22, WebKitGTK 4.1, GTK 3, X11/XTest, Xvfb, and Xauthority support. On Debian or Ubuntu:
+Download the matching Linux archive from the same GitHub release, or build the native host from that revision. Source builds require Go 1.24 or newer and Node.js 22. The Linux host also needs WebKitGTK 4.1, GTK 3, X11/XTest, Xvfb, and Xauthority support. On Debian or Ubuntu:
 
 ```sh
 sudo apt-get install libwebkit2gtk-4.1-0 libgtk-3-0 libxtst6 xvfb xauth

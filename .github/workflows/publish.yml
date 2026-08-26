@@ -30,20 +30,42 @@ jobs:
           package-manager-cache: false
       - name: Validate release source and version
         env:
+          GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          version="$(node --print "require('./package.json').version")"
+          version="${RELEASE_TAG#v}"
           test "$RELEASE_TAG" = "v$version"
+          node -e 'if (!/^\d+\.\d+\.\d+$/.test(process.argv[1])) process.exit(1)' "$version"
           git merge-base --is-ancestor HEAD origin/main
+          actual_assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | sort)"
+          printf '%s\n' \
+            "rush-$RELEASE_TAG-darwin-amd64.tar.gz" \
+            "rush-$RELEASE_TAG-darwin-arm64.tar.gz" \
+            "rush-$RELEASE_TAG-linux-amd64.tar.gz" \
+            "rush-$RELEASE_TAG-linux-arm64.tar.gz" \
+            "rush-release.json" |
+            while IFS= read -r expected_asset; do
+              grep -Fqx "$expected_asset" <<< "$actual_assets"
+            done
+          release_record_dir="$(mktemp -d)"
+          gh release download "$RELEASE_TAG" --pattern rush-release.json --dir "$release_record_dir"
+          node -e '
+            const record = require(process.argv[1]);
+            if (record.version !== process.argv[2] || record.commit !== process.argv[3]) process.exit(1);
+          ' "$release_record_dir/rush-release.json" "$version" "$(git rev-parse HEAD)"
       - name: Install release toolchain
         run: |
           npm install --global npm@11.16.0 --ignore-scripts
           sudo apt-get update
           sudo apt-get install --yes libwebkit2gtk-4.1-0 libxtst6 xvfb xauth
       - name: Build and check release
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
+          npm version "${RELEASE_TAG#v}" --no-git-tag-version --allow-same-version
           npm ci --ignore-scripts
           npm run check
+          npm run check:release
           npm run build
           go test ./...
           go build -o bin/rush ./cmd/rush
