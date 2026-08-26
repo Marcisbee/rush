@@ -85,6 +85,16 @@ describe("browser API", () => {
     expect(callback).toHaveBeenCalled();
     expect(Date.now()).toBe(new Date("2026-01-01T00:00:00.500Z").getTime());
   });
+
+  test("passes importOriginal to async mock factories", async () => {
+    vi.mock("partial-module", async (importOriginal) => {
+      const actual = await importOriginal<{ read(): string }>();
+      return { ...actual, read: () => `mocked:${actual.read()}` };
+    });
+
+    const loaded = await vi.importMock("partial-module", async () => ({ read: () => "real" }));
+    expect(loaded.read()).toBe("mocked:real");
+  });
 });
 
 describe("static mock hoisting", () => {

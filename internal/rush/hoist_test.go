@@ -20,8 +20,8 @@ test("mocked", () => readValue());`
 	if registration == -1 || delayedImport == -1 || registration > delayedImport {
 		t.Fatalf("mock was not registered before the delayed import:\n%s", transformed)
 	}
-	if !strings.Contains(transformed, "globalThis.__rushRegistration = (async () =>") {
-		t.Fatalf("registration promise missing:\n%s", transformed)
+	if strings.Contains(transformed, "globalThis.__rushRegistration") {
+		t.Fatalf("source transform unexpectedly owns bundle registration:\n%s", transformed)
 	}
 }
 
