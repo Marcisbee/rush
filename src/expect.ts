@@ -287,7 +287,7 @@ class Expectation {
     return this.apply("to have text content", (value) => isNode(value) && (expected instanceof RegExp ? expected.test(value.textContent ?? "") : (value.textContent ?? "").includes(String(expected))), expected);
   }
   toHaveAttribute(name: string, expected?: unknown): MatcherResult {
-    return this.apply("to have attribute", (value) => isElement(value) && value.hasAttribute(name) && (arguments.length < 2 || value.getAttribute(name) === String(expected)), name);
+    return this.apply("to have attribute", (value) => isElement(value) && value.hasAttribute(name) && (arguments.length < 2 || equals(value.getAttribute(name), expected)), name);
   }
   toHaveClass(...values: Array<ClassExpectation | { exact: boolean }>): MatcherResult {
     const maybeOptions = values.at(-1);
