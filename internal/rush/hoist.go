@@ -54,7 +54,7 @@ func transformHoistedMocks(source string) (string, error) {
 	for _, mock := range mocks {
 		registrations = append(registrations, "__rushRegisterMock__("+mock.arguments+");")
 	}
-	return "import { __rushRegisterMock__, __rushImport__ } from \"@rush/browser/internal\";\n" +
+	return "import { __rushRegisterMock__, __rushImport__ } from \"rush-webtest/internal\";\n" +
 		strings.Join(registrations, "\n") +
 		"\nglobalThis.__rushRegistration = (async () => {\n" + body + "\n})();\n", nil
 }

@@ -1,4 +1,4 @@
-import { expect, test } from "@rush/browser"
+import { expect, test } from "rush-webtest"
 
 test("executes JavaScript in WebKitGTK", () => {
   const element = document.createElement("output")
