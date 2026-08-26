@@ -74,7 +74,7 @@ rush_wk_view *rush_wk_create(int debug, uintptr_t handle) {
 
   NSRect frame = NSMakeRect(0, 0, 1280, 800);
   WKWebView *webview = [[WKWebView alloc] initWithFrame:frame configuration:configuration];
-  if ([webview respondsToSelector:@selector(setInspectable:)]) {
+  if (@available(macOS 13.3, *)) {
     webview.inspectable = YES;
   }
   NSWindow *window = [[NSWindow alloc]
