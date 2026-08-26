@@ -6,6 +6,7 @@ import {
   beforeEach,
   configureRuntime,
   describe,
+  expect as rushExpect,
   resetRegistry,
   run,
   test,
@@ -127,6 +128,51 @@ vitestDescribe("test models", () => {
     const result = await run({ emit: false });
     assert(result.failed).toBe(0);
     assert(disposed).toEqual([1, 2]);
+  });
+
+  vitestTest("matches application-realm DOM state like browser-realm DOM state", async () => {
+    configureRuntime({
+      createApp: () => {
+        const frame = document.createElement("iframe");
+        document.body.append(frame);
+        const testDocument = frame.contentDocument as Document;
+        testDocument.body.innerHTML = `<button data-state="ready" disabled>Save changes</button><input value="Ada">`;
+        return {
+          window: () => frame.contentWindow as Window,
+          document: () => testDocument,
+          url: () => "https://app.test/",
+          goto: async () => {},
+          network: {
+            route: () => () => {},
+            requests: () => [],
+            waitForRequest: async () => { throw new Error("unused"); },
+          },
+          dispose: () => { frame.remove(); },
+        };
+      },
+    });
+    const verifyDomState = (button: Element, input: Element) => {
+      rushExpect(button).toBeInTheDocument();
+      rushExpect(button).toHaveTextContent("Save");
+      rushExpect(button).toHaveAttribute("data-state", "ready");
+      rushExpect(button).toBeVisible();
+      rushExpect(button).toBeDisabled();
+      rushExpect(input).toHaveValue("Ada");
+    };
+    document.body.innerHTML = `<button data-state="ready" disabled>Save changes</button><input value="Ada">`;
+    test.browser("browser", ({ page }) => {
+      verifyDomState(page.getByRole("button").element(), page.getByRole("textbox").element());
+    });
+    test.app("app", ({ page }) => {
+      verifyDomState(page.getByRole("button").element(), page.getByRole("textbox").element());
+    });
+
+    const result = await run({ emit: false });
+
+    assert(result.tests.map(({ model, state }) => [model, state])).toEqual([
+      ["browser", "passed"],
+      ["app", "passed"],
+    ]);
   });
 
   vitestTest("creates named isolated session clients and disposes them", async () => {

@@ -46,6 +46,28 @@ function format(value: unknown): string {
   return serialize(value);
 }
 
+type DomConstructorName = "Node" | "Element" | "HTMLElement";
+
+function isDomInstance<T extends object>(value: unknown, constructorName: DomConstructorName): value is T {
+  if (typeof value !== "object" || value === null) return false;
+  const ownerDocument = (value as { ownerDocument?: Document | null }).ownerDocument;
+  const realm = ownerDocument?.defaultView ?? globalThis;
+  const constructor = realm[constructorName];
+  return typeof constructor === "function" && value instanceof constructor;
+}
+
+function isNode(value: unknown): value is Node {
+  return isDomInstance<Node>(value, "Node");
+}
+
+function isElement(value: unknown): value is Element {
+  return isDomInstance<Element>(value, "Element");
+}
+
+function isHtmlElement(value: unknown): value is HTMLElement {
+  return isDomInstance<HTMLElement>(value, "HTMLElement");
+}
+
 class Expectation {
   constructor(
     private readonly received: unknown,
@@ -155,22 +177,22 @@ class Expectation {
     return this.apply("to match object", (value) => subset(value, expected), expected);
   }
   toBeInTheDocument(): MatcherResult {
-    return this.apply("to be in the document", (value) => value instanceof Node && (value.ownerDocument?.documentElement.contains(value) ?? false));
+    return this.apply("to be in the document", (value) => isNode(value) && (value.ownerDocument?.documentElement.contains(value) ?? false));
   }
   toHaveTextContent(expected: unknown): MatcherResult {
-    return this.apply("to have text content", (value) => value instanceof Node && (expected instanceof RegExp ? expected.test(value.textContent ?? "") : (value.textContent ?? "").includes(String(expected))), expected);
+    return this.apply("to have text content", (value) => isNode(value) && (expected instanceof RegExp ? expected.test(value.textContent ?? "") : (value.textContent ?? "").includes(String(expected))), expected);
   }
   toHaveAttribute(name: string, expected?: unknown): MatcherResult {
-    return this.apply("to have attribute", (value) => value instanceof Element && value.hasAttribute(name) && (arguments.length < 2 || value.getAttribute(name) === String(expected)), name);
+    return this.apply("to have attribute", (value) => isElement(value) && value.hasAttribute(name) && (arguments.length < 2 || value.getAttribute(name) === String(expected)), name);
   }
   toBeVisible(): MatcherResult {
-    return this.apply("to be visible", (value) => value instanceof HTMLElement && !value.hidden && value.style.display !== "none" && value.style.visibility !== "hidden");
+    return this.apply("to be visible", (value) => isHtmlElement(value) && !value.hidden && value.style.display !== "none" && value.style.visibility !== "hidden");
   }
   toBeDisabled(): MatcherResult {
-    return this.apply("to be disabled", (value) => value instanceof HTMLElement && ("disabled" in value ? Boolean(value.disabled) : value.getAttribute("aria-disabled") === "true"));
+    return this.apply("to be disabled", (value) => isHtmlElement(value) && ("disabled" in value ? Boolean(value.disabled) : value.getAttribute("aria-disabled") === "true"));
   }
   toHaveValue(expected: unknown): MatcherResult {
-    return this.apply("to have value", (value) => value instanceof HTMLElement && "value" in value && Object.is(value.value, expected), expected);
+    return this.apply("to have value", (value) => isHtmlElement(value) && "value" in value && Object.is(value.value, expected), expected);
   }
   toHaveBeenCalled(): MatcherResult { return this.apply("to have been called", hasCalls); }
   toHaveBeenCalledTimes(expected: number): MatcherResult { return this.apply("to have been called times", (value) => callList(value)?.length === expected, expected); }
