@@ -229,6 +229,63 @@ if (globalThis.__rushHoistedMockResult !== "mocked") {
 	}
 }
 
+func TestBuilderLoadsStaticImportActualInsideMockFactory(t *testing.T) {
+	t.Setenv("RUSH_BROWSER_MODULE", "")
+	directory := t.TempDir()
+	service := filepath.Join(directory, "avatarCrop.ts")
+	suite := filepath.Join(directory, "avatarCrop.test.ts")
+	if err := os.WriteFile(service, []byte(`
+export const crop = () => "real";
+export const format = "png";
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(suite, []byte(`
+import { vi } from "rush-webtest";
+import { crop, format } from "./avatarCrop";
+vi.mock("./avatarCrop", async () => {
+  const actual = await vi.importActual<typeof import("./avatarCrop")>("./avatarCrop");
+  return { ...actual, crop: () => "mocked" };
+});
+globalThis.__rushImportActualResult = [crop(), format];
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	builder := NewBuilder()
+	defer builder.Close()
+	bundle, _, err := builder.Build(directory, suite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := `
+const mocks = new Map();
+globalThis.__rushBrowserRuntime = {
+  vi: {
+    importActual(importer) { return importer(); },
+  },
+  __rushRegisterMock__(id, factory) { mocks.set(id, factory); },
+  async __rushImport__(id, importer) {
+    const factory = mocks.get(id);
+    return factory ? factory(importer) : importer();
+  },
+};
+`
+	script := filepath.Join(directory, "execute.mjs")
+	if err := os.WriteFile(script, []byte(runtime+bundle+`
+await globalThis.__rushRegistration;
+if (JSON.stringify(globalThis.__rushImportActualResult) !== '["mocked","png"]') {
+  throw new Error("importActual result: " + JSON.stringify(globalThis.__rushImportActualResult));
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	output, err := exec.Command("node", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("execute bundle: %v\n%s", err, output)
+	}
+}
+
 func TestBuilderReportsTypeScriptSyntaxErrors(t *testing.T) {
 	directory, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {

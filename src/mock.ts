@@ -49,7 +49,7 @@ export function fn<TArgs extends unknown[] = unknown[], TReturn = unknown>(imple
   const initialImplementation = implementation;
   const once: Array<(...args: TArgs) => TReturn> = [];
   let name = "vi.fn()";
-  let restore = (): void => {};
+  let restore: (() => void) | undefined;
   let state: MockState<TArgs, TReturn> = createState();
 
   const callable = function (this: unknown, ...args: TArgs): TReturn {
@@ -72,7 +72,11 @@ export function fn<TArgs extends unknown[] = unknown[], TReturn = unknown>(imple
   const control: MockControl = {
     clear() { state = createState(); },
     reset() { state = createState(); once.length = 0; currentImplementation = undefined; },
-    restore() { restore(); controls.delete(control); },
+    restore() {
+      if (!restore) return;
+      restore();
+      controls.delete(control);
+    },
   };
   controls.add(control);
 
@@ -95,9 +99,6 @@ export function fn<TArgs extends unknown[] = unknown[], TReturn = unknown>(imple
   callable.mockRejectedValue = (value) => callable.mockImplementation(() => Promise.reject(value) as TReturn);
   callable.mockRejectedValueOnce = (value) => callable.mockImplementationOnce(() => Promise.reject(value) as TReturn);
 
-  Object.defineProperty(control, "restore", {
-    value: () => { restore(); controls.delete(control); },
-  });
   Object.defineProperty(callable, "__setRestore", {
     value: (callback: () => void) => { restore = callback; },
   });
@@ -232,6 +233,28 @@ export function resetModules(): void {
   moduleMocks.clear();
 }
 
+const stubbedGlobals = new Map<string | number | symbol, PropertyDescriptor | undefined>();
+
+function stubGlobal(name: string | number | symbol, value: unknown): void {
+  if (!stubbedGlobals.has(name)) {
+    stubbedGlobals.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
+  }
+  Object.defineProperty(globalThis, name, {
+    value,
+    writable: true,
+    configurable: true,
+    enumerable: true,
+  });
+}
+
+function unstubAllGlobals(): void {
+  for (const [name, original] of stubbedGlobals) {
+    if (original) Object.defineProperty(globalThis, name, original);
+    else Reflect.deleteProperty(globalThis, name);
+  }
+  stubbedGlobals.clear();
+}
+
 export const vi = {
   fn,
   waitFor,
@@ -259,6 +282,8 @@ export const vi = {
   unmock,
   doUnmock: unmock,
   resetModules,
+  stubGlobal,
+  unstubAllGlobals,
   importActual,
   importMock<T extends Record<string, unknown>>(id: string, importer: () => Promise<T>): Promise<T> { return importWithMocks(id, importer); },
   hoisted<T>(factory: () => T): T { return factory(); },
@@ -266,6 +291,8 @@ export const vi = {
 
 export function resetMockRuntime(): void {
   vi.restoreAllMocks();
+  controls.clear();
+  vi.unstubAllGlobals();
   useRealTimers();
   resetModules();
 }

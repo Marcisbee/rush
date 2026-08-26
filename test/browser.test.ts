@@ -1,4 +1,5 @@
 import {
+  afterEach,
   beforeEach,
   describe,
   expect,
@@ -7,6 +8,13 @@ import {
   transformHoistedMocks,
   vi,
 } from "rush-webtest";
+
+const lifecycleMock = vi.fn<[string], string>(() => "initial");
+const stubbedGlobalName = "__rushMockLifecycleGlobal__";
+const originalInnerWidth = globalThis.innerWidth;
+const globals = globalThis as typeof globalThis & Record<string, unknown>;
+const lifecycleTarget = { reload: () => "original" };
+const originalReload = lifecycleTarget.reload;
 
 beforeEach(() => {
   document.body.innerHTML = `
@@ -244,6 +252,43 @@ describe("browser API", () => {
   });
 });
 
+describe("mock lifecycle", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  test("tracks an ordinary mock and stubs globals before restoration", () => {
+    expect(lifecycleMock("first")).toBe("initial");
+    vi.spyOn(lifecycleTarget, "reload").mockReturnValue("stubbed");
+    vi.stubGlobal(stubbedGlobalName, "stubbed");
+    vi.stubGlobal("innerWidth", 1280);
+    vi.stubGlobal("innerWidth", 1440);
+
+    expect(lifecycleMock).toHaveBeenCalledOnce();
+    expect(lifecycleTarget.reload()).toBe("stubbed");
+    expect(globals[stubbedGlobalName]).toBe("stubbed");
+    expect(globalThis.innerWidth).toBe(1440);
+  });
+
+  test("keeps ordinary mocks tracked for later clears and resets", () => {
+    expect(lifecycleMock).not.toHaveBeenCalled();
+    expect(lifecycleTarget.reload).toBe(originalReload);
+    expect(lifecycleTarget.reload()).toBe("original");
+    expect(stubbedGlobalName in globalThis).toBe(false);
+    expect(globalThis.innerWidth).toBe(originalInnerWidth);
+
+    vi.resetAllMocks();
+    expect(lifecycleMock.getMockImplementation()).toBeUndefined();
+    expect(lifecycleMock("second")).toBeUndefined();
+    expect(lifecycleMock).toHaveBeenCalledOnce();
+  });
+});
+
 describe("static mock hoisting", () => {
   test("registers mocks before rewriting imports", async () => {
     const transformed = await transformHoistedMocks(`
@@ -275,6 +320,22 @@ describe("static mock hoisting", () => {
     expect(hoisted).toBeLessThan(registration);
     expect(registration).toBeLessThan(delayedImport);
     expect(transformed).not.toContain("const { state } = vi.hoisted");
+  });
+
+  test("loads static vi.importActual requests through importer callbacks", async () => {
+    const transformed = await transformHoistedMocks(`
+      import { vi, test } from "rush-webtest";
+      import { crop } from "./avatarCrop";
+      vi.mock("./avatarCrop", async () => {
+        const actual = await vi.importActual<typeof import("./avatarCrop")>("./avatarCrop");
+        return { ...actual, crop: () => "mocked" };
+      });
+      test("mocked", () => crop());
+    `);
+
+    expect(transformed).toContain(`vi.importActual<typeof import("./avatarCrop")>(() => import("./avatarCrop"))`);
+    expect(transformed).toContain(`__rushRegisterMock__("./avatarCrop"`);
+    expect(transformed).not.toContain(`vi.importActual<typeof import("./avatarCrop")>("./avatarCrop")`);
   });
 
   test("leaves modules without static mocks unchanged", async () => {
