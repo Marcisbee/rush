@@ -93,12 +93,12 @@ Normal and JSON output report build, runner, application, network, intentional-w
 ## Commands
 
 ```text
-rush test [--watch] [--headed] [--json] [--timeout DURATION] FILE...
+rush test [--watch] [--headed] [--verbose] [--json] [--timeout DURATION] FILE...
 rush bench [--repeat N] [--cold-repeat N] [--json]
 rush doctor
 ```
 
-Shell globs and multiple files are accepted. `--watch` performs an initial run, watches the complete esbuild input set, and reruns with the same command-scoped browser host until `Ctrl+C`. The adapter-independent command packages also define the intended `run`, `debug`, reporter, and artifact surface, but those options are not accepted by `./bin/rush` yet.
+Shell globs and multiple files are accepted. The default console output groups individual results by file and prints a compact pass/fail summary. `--verbose` adds the detailed build, browser, and startup timing phases. `--watch` performs an initial run, watches the complete esbuild input set, and reruns with the same command-scoped browser host until `Ctrl+C`. The adapter-independent command packages also define the intended `run`, `debug`, reporter, and artifact surface, but those options are not accepted by `./bin/rush` yet.
 
 ## Documentation
 

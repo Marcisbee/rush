@@ -5,7 +5,7 @@
 The source-built Linux proof accepts these commands:
 
 ```text
-rush test [--watch] [--headed] [--json] [--timeout DURATION] FILE...
+rush test [--watch] [--headed] [--verbose] [--json] [--timeout DURATION] FILE...
 rush bench [--repeat N] [--cold-repeat N] [--json]
 rush doctor
 ```
@@ -17,10 +17,11 @@ Examples:
 ./bin/rush test examples/browser-api.test.ts examples/javascript.test.js
 ./bin/rush test --json 'examples/*.test.ts'
 ./bin/rush test --timeout 45s --headed examples/react.test.tsx
+./bin/rush test --verbose examples/browser-api.test.ts
 ./bin/rush test --watch examples/react.test.tsx
 ```
 
-`test` expands shell-style file globs, removes duplicate paths, and rejects directories. The timeout applies separately to each suite. Normal output lists failures, per-suite timing phases, result counts, request wall time, and cold startup. `--json` emits the native response instead. Every one-shot invocation owns and cleans up its native browser host before exiting.
+`test` expands shell-style file globs, removes duplicate paths, and rejects directories. The timeout applies separately to each suite. Normal output groups tests by file, shows each status and duration, indents failure details, and ends with pass/fail counts plus total runtime. Interactive terminals use color and status symbols; redirected and CI output uses portable ASCII markers. `--verbose` adds per-file build, runner, application, network, wait, and page timings plus startup and request timing. `--json` emits the unchanged native response instead. Every one-shot invocation owns and cleans up its native browser host before exiting.
 
 `--watch` keeps that command's browser pool and incremental esbuild context warm, watches the input files reported by esbuild, and reruns the selected suites after a dependency changes. Test failures are reported without ending the watch loop. Press `Ctrl+C` to stop and clean up the host. `--json` and `--watch` are intentionally mutually exclusive because watch produces multiple results.
 

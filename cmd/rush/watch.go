@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -64,4 +65,12 @@ func statWatchedFile(path string) watchedFileState {
 		return watchedFileState{}
 	}
 	return watchedFileState{exists: true, size: info.Size(), modified: info.ModTime().UnixNano()}
+}
+
+func displayPath(cwd, path string) string {
+	relative, err := filepath.Rel(cwd, path)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return path
+	}
+	return filepath.ToSlash(relative)
 }

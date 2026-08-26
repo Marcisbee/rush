@@ -26,7 +26,7 @@ func main() {
 
 func run(args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: rush test [--watch] [--headed] [--json] FILE... | rush bench | rush doctor")
+		return errors.New("usage: rush test [--watch] [--headed] [--verbose] [--json] FILE... | rush bench | rush doctor")
 	}
 	switch args[0] {
 	case "test":
@@ -63,6 +63,7 @@ func runTests(args []string, stdout, stderr io.Writer) (runErr error) {
 	headed := set.Bool("headed", false, headedHelp)
 	watch := set.Bool("watch", false, "rerun tests when their source dependencies change")
 	jsonOutput := set.Bool("json", false, "write a machine-readable response")
+	verbose := set.Bool("verbose", false, "show detailed build and browser timing phases")
 	timeout := set.Duration("timeout", 30*time.Second, "timeout for each suite")
 	if err := set.Parse(args); err != nil {
 		return err
@@ -109,9 +110,10 @@ func runTests(args []string, stdout, stderr io.Writer) (runErr error) {
 		encoder.SetIndent("", "  ")
 		return encoder.Encode(response)
 	}
+	console := consoleOptionsFor(stdout, *verbose)
 	if err != nil {
 		fmt.Fprintln(stderr, "rush:", err)
-	} else if printErr := printResponse(stdout, response); printErr != nil && !*watch {
+	} else if printErr := printResponse(stdout, response, console); printErr != nil && !*watch {
 		return printErr
 	}
 	if !*watch {
@@ -128,7 +130,7 @@ func runTests(args []string, stdout, stderr io.Writer) (runErr error) {
 		if waitErr != nil {
 			return waitErr
 		}
-		fmt.Fprintf(stdout, "\nChange detected: %s\n", changed)
+		printWatchChange(stdout, displayPath(cwd, changed), console)
 		response, err = host.Send(request)
 		if watchContext.Err() != nil {
 			return nil
@@ -140,7 +142,7 @@ func runTests(args []string, stdout, stderr io.Writer) (runErr error) {
 			fmt.Fprintln(stderr, "rush:", err)
 			continue
 		}
-		_ = printResponse(stdout, response)
+		_ = printResponse(stdout, response, console)
 	}
 }
 
@@ -171,35 +173,6 @@ func expandFiles(arguments []string) ([]string, error) {
 		}
 	}
 	return files, nil
-}
-
-func printResponse(output io.Writer, response rush.Response) error {
-	passed, failed, skipped := 0, 0, 0
-	for _, suite := range response.Suites {
-		for _, test := range suite.Tests {
-			switch test.Status {
-			case "passed":
-				passed++
-			case "failed":
-				failed++
-				fmt.Fprintf(output, "FAIL %s — %s\n%s\n", suite.File, test.Name, test.Error)
-			default:
-				skipped++
-			}
-		}
-		t := suite.Timing
-		fmt.Fprintf(output, "%s: build %.2fms | runner %.2fms | application %.2fms | network %.2fms | intentional wait %.2fms | page total %.2fms\n",
-			suite.File, t.BuildMS, t.RunnerMS, t.ApplicationMS, t.NetworkMS, t.WaitMS, t.TotalMS)
-	}
-	fmt.Fprintf(output, "%d passed, %d failed, %d skipped; request %.2fms", passed, failed, skipped, response.WallMS)
-	if response.Cold {
-		fmt.Fprintf(output, "; cold browser startup %.2fms", response.StartupMS)
-	}
-	fmt.Fprintln(output)
-	if failed > 0 {
-		return fmt.Errorf("%d test(s) failed", failed)
-	}
-	return nil
 }
 
 func nativeHost(args []string) error {
