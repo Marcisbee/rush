@@ -1,25 +1,32 @@
 # Publishing `rush-webtest`
 
-All npm publishes run from `.github/workflows/publish.yml` after a GitHub release is published. Pull-request workflows have neither npm credentials nor permission to mint an npm publishing identity.
+Automated npm publishes run from `.github/workflows/publish.yml` after a GitHub release is published. The workflow authenticates exclusively through npm trusted publishing and GitHub OIDC. It does not read an npm token or repository secret. Pull-request workflows have neither npm credentials nor permission to mint an npm publishing identity.
 
 ## First release
 
-npm requires a package to exist before a trusted publisher can be attached. Bootstrap `rush-webtest@0.1.0` with a short-lived granular access token:
+npm requires a package to exist before a trusted publisher can be attached. Publish `rush-webtest@0.1.0` once from a maintainer's local checkout using an interactive npm session with 2FA:
 
-1. Create the `npm-publish` GitHub environment and require its normal deployment approval.
-2. Create a granular npm token with read/write package permission, bypass 2FA, and the shortest practical expiration. Store it only as the `NPM_BOOTSTRAP_TOKEN` secret in the `npm-publish` environment.
-3. Merge the release commit to `main`, create tag `v0.1.0` from that commit, and publish the matching GitHub release. The release workflow validates that the tag matches `package.json` and belongs to `main` before publishing.
-4. After the workflow installs `rush-webtest@0.1.0` from the public registry and passes its real-WebKit smoke test, configure the package's npm trusted publisher with these exact values:
+1. Merge the release commit to `main`, then check out that exact commit locally.
+2. Run the same build and validation used by the release workflow:
+   ```bash
+   npm ci --ignore-scripts
+   npm run check
+   npm run build
+   go test ./...
+   go build -o bin/rush ./cmd/rush
+   npm pack --dry-run
+   ```
+3. Run `npm login`, confirm the expected account with `npm whoami`, and run `npm publish --access public`. Complete the interactive 2FA challenge when prompted. Do not create a GitHub release for `v0.1.0`, because the release workflow would attempt to publish the same immutable version again.
+4. Confirm `npm view rush-webtest@0.1.0 version` returns `0.1.0`.
+5. Create the `npm-publish` GitHub environment and require its normal deployment approval.
+6. Configure the package's npm trusted publisher with these exact values:
    - Provider: GitHub Actions
    - Organization or user: `Marcisbee`
    - Repository: `rush`
    - Workflow filename: `publish.yml`
    - Environment: `npm-publish`
    - Allowed action: `npm publish`
-5. Delete the `NPM_BOOTSTRAP_TOKEN` environment secret and revoke the granular npm token.
-6. In the npm package publishing settings, require 2FA and disallow token publishing after the trusted publisher is active.
-
-The bootstrap token is only available to this release-only environment. It is never exposed to a pull-request job or stored in the repository.
+7. In the npm package publishing settings, require 2FA and disallow token publishing after the trusted publisher is active.
 
 ## Later releases
 

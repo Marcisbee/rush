@@ -49,14 +49,7 @@ jobs:
           go build -o bin/rush ./cmd/rush
           npm pack --dry-run
       - name: Publish to npm
-        run: |
-          if test -n "${NODE_AUTH_TOKEN:-}"; then
-            npm config set "//registry.npmjs.org/:_authToken" "$NODE_AUTH_TOKEN" --location=user
-          fi
-          npm publish --access public
-        env:
-          # Used only to bootstrap 0.1.0; later releases authenticate through OIDC.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
+        run: npm publish --access public
       - name: Install from the public registry and run Rush
         run: |
           version="$(node --print "require('./package.json').version")"
