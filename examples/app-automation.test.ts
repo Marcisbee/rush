@@ -28,6 +28,7 @@ test.app("navigates, intercepts requests, and uses trusted input", async ({goto,
       <form>
         <label>Email <input aria-label="Email"></label>
         <button type="submit">Save</button>
+        <button type="button" disabled>Unavailable</button>
       </form>
       <nav aria-label="Targets">
         <button type="button" data-target="left">Left</button><button type="button" data-target="middle">Middle</button><button type="button" data-target="right">Right</button>
@@ -65,10 +66,16 @@ test.app("navigates, intercepts requests, and uses trusted input", async ({goto,
   const apiRequest = network.waitForRequest(`${appOrigin}/api/user`)
   await goto(`${appOrigin}/account`)
   expect((await apiRequest).method).toBe("GET")
-  await page.findByText("Ada")
+  const user = await page.findByText("Ada")
 
   const input = page.getByRole("textbox", {name: "Email"})
+  expect(user.element()).toBeInTheDocument()
+  expect(user.element()).toHaveTextContent("Ada")
+  expect(input.element()).toHaveAttribute("aria-label", "Email")
+  expect(input.element()).toBeVisible()
+  expect(page.getByRole("button", {name: "Unavailable"}).element()).toBeDisabled()
   input.fill("synthetic")
+  expect(input.element()).toHaveValue("synthetic")
   expect(input.getAttribute("data-trusted")).toBe("false")
   input.fill("")
   await native.type(input, "ada@example.test")
