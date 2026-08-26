@@ -20,7 +20,7 @@ The public working package supports:
 - JavaScript, TypeScript, JSX, and TSX bundled for ES2022 browsers.
 - Vitest-like suites, hooks, selection, parameterized tests, and todo tests.
 - Familiar core, promise, asymmetric, DOM, mock, and snapshot assertions.
-- `vi.fn`, `vi.spyOn`, statically hoisted `vi.mock`, `vi.hoisted` mock state, and fake timers.
+- `vi.fn`, `vi.spyOn`, `vi.stubGlobal`, statically hoisted `vi.mock`, `vi.hoisted` mock state, and fake timers.
 - Testing Library DOM queries, locators, `waitFor`, and synthetic interactions.
 - Browser, app, and named-session type contracts.
 
