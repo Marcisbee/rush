@@ -247,3 +247,109 @@ func TestBuilderKeepsSharedBrowserRuntimeOutOfSuiteBundles(t *testing.T) {
 		t.Fatal("suite bundle contains Testing Library implementation")
 	}
 }
+
+func TestBuilderBundlesViteAssetsAndPackageStyles(t *testing.T) {
+	t.Setenv("RUSH_BROWSER_MODULE", "")
+	directory := t.TempDir()
+	packageDirectory := filepath.Join(directory, "node_modules", "style-package")
+	if err := os.MkdirAll(packageDirectory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		filepath.Join(directory, "icon.svg"):            `<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h1v1z"/></svg>`,
+		filepath.Join(directory, "local.css"):           `@import "style-package"; .local { background: url("./icon.svg"); }`,
+		filepath.Join(packageDirectory, "package.json"): `{"exports":{".":{"style":"./style.css","default":"./index.js"}}}`,
+		filepath.Join(packageDirectory, "index.js"):     `throw new Error("style condition was not selected")`,
+		filepath.Join(packageDirectory, "style.css"):    `.from-package { color: rgb(1, 2, 3); }`,
+		filepath.Join(directory, "suite.ts"): `
+			import icon from "./icon.svg";
+			import iconURL from "./icon.svg?url";
+			import "./local.css";
+			import { expect, test } from "rush-webtest";
+			test("assets", () => expect(iconURL).toBe(icon));
+		`,
+	}
+	for path, contents := range files {
+		if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	builder := NewBuilder()
+	defer builder.Close()
+	bundle, _, err := builder.Build(directory, filepath.Join(directory, "suite.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"data:image/svg+xml,", ".local", ".from-package", "data-rush-bundle-style"} {
+		if !strings.Contains(bundle, expected) {
+			t.Fatalf("bundle does not include %q", expected)
+		}
+	}
+}
+
+func TestBuilderUsesConsumerAliasesAndLoaders(t *testing.T) {
+	t.Setenv("RUSH_BROWSER_MODULE", "")
+	directory := t.TempDir()
+	files := map[string]string{
+		filepath.Join(directory, "message.txt"): "consumer loader value",
+		filepath.Join(directory, "pwa-stub.ts"): `export const registerSW = () => "consumer alias value"`,
+		filepath.Join(directory, "suite.ts"): `
+			import message from "./message.txt";
+			import { registerSW } from "virtual:pwa-register";
+			import { expect, test } from "rush-webtest";
+			test("configuration", () => expect([message, registerSW()]).toEqual(["consumer loader value", "consumer alias value"]));
+		`,
+	}
+	for path, contents := range files {
+		if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	builder := NewBuilder(BuilderOptions{
+		Aliases: map[string]string{"virtual:pwa-register": "./pwa-stub.ts"},
+		Loaders: map[string]string{".txt": "text"},
+	})
+	defer builder.Close()
+	bundle, _, err := builder.Build(directory, filepath.Join(directory, "suite.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"consumer loader value", "consumer alias value"} {
+		if !strings.Contains(bundle, expected) {
+			t.Fatalf("bundle does not include %q", expected)
+		}
+	}
+}
+
+func TestBuilderDefinesViteEnvironment(t *testing.T) {
+	t.Setenv("RUSH_BROWSER_MODULE", "")
+	t.Setenv("RUSH_NODE_ENV", "test")
+	t.Setenv("VITE_PUBLIC_ORIGIN", "https://example.test")
+	directory := t.TempDir()
+	suite := filepath.Join(directory, "suite.ts")
+	if err := os.WriteFile(suite, []byte(`
+		import { expect, test } from "rush-webtest";
+		test("environment", () => expect([
+			import.meta.env.MODE,
+			import.meta.env.DEV,
+			import.meta.env.PROD,
+			import.meta.env.SSR,
+			import.meta.env.BASE_URL,
+			import.meta.env.VITE_PUBLIC_ORIGIN,
+		]).toEqual(["test", true, false, false, "/", "https://example.test"]));
+	`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	builder := NewBuilder()
+	defer builder.Close()
+	bundle, _, err := builder.Build(directory, suite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(bundle, "import_meta.env") || !strings.Contains(bundle, "https://example.test") {
+		t.Fatalf("Vite environment was not compiled into the suite")
+	}
+}

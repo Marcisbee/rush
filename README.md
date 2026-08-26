@@ -93,12 +93,14 @@ Normal and JSON output report build, runner, application, network, intentional-w
 ## Commands
 
 ```text
-rush test [--watch] [--headed] [--verbose] [--json] [--timeout DURATION] FILE...
+rush test [--watch] [--headed] [--verbose] [--json] [--timeout DURATION] [--alias MODULE=PATH] [--loader EXTENSION=LOADER] FILE...
 rush bench [--repeat N] [--cold-repeat N] [--json]
 rush doctor
 ```
 
 Shell globs and multiple files are accepted. The default console output groups individual results by file and prints a compact pass/fail summary. `--verbose` adds the detailed build, browser, and startup timing phases. `--watch` performs an initial run, watches the complete esbuild input set, and reruns with the same command-scoped browser host until `Ctrl+C`. The adapter-independent command packages also define the intended `run`, `debug`, reporter, and artifact surface, but those options are not accepted by `./bin/rush` yet.
+
+Vite-style image, font, and media imports are embedded as data URLs. Imported CSS is bundled, including package exports selected through the `style` condition, and injected into the isolated suite page. Use repeatable `--alias module=path` flags to replace virtual modules with browser-safe consumer stubs, and `--loader .extension=text|dataurl|base64|binary|empty|json|js|jsx|ts|tsx|css` to override an asset type. Rush also defines Vite's built-in `import.meta.env` fields and includes exported `VITE_*` environment variables.
 
 ## Documentation
 

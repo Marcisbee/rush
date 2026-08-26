@@ -190,3 +190,29 @@ func TestWaitForFileChangeStopsWithContext(t *testing.T) {
 		t.Fatalf("wait error = %v", err)
 	}
 }
+
+func TestBuildFlagsAcceptAliasesAndLoaders(t *testing.T) {
+	options, files, err := parseBuildFlags([]string{
+		"--alias=virtual:pwa-register=./test/pwa-stub.ts",
+		"--loader=.svg=text",
+		"suite.test.ts",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if options.Aliases["virtual:pwa-register"] != "./test/pwa-stub.ts" {
+		t.Fatalf("aliases = %#v", options.Aliases)
+	}
+	if options.Loaders[".svg"] != "text" {
+		t.Fatalf("loaders = %#v", options.Loaders)
+	}
+	if len(files) != 1 || files[0] != "suite.test.ts" {
+		t.Fatalf("files = %#v", files)
+	}
+}
+
+func TestBuildFlagsRejectUnsupportedLoader(t *testing.T) {
+	if _, _, err := parseBuildFlags([]string{"--loader=.svg=file", "suite.test.ts"}); err == nil {
+		t.Fatal("file loader was accepted even though emitted assets cannot be served")
+	}
+}
