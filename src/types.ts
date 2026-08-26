@@ -123,6 +123,7 @@ export interface TestResult {
   state: "passed" | "failed" | "skipped" | "todo";
   durationMs: number;
   error?: SerializedError;
+  skipReason?: string;
 }
 
 export interface SerializedError {

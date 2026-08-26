@@ -33,7 +33,7 @@ func TestConsoleReporterUsesCompactFileAndTestHierarchy(t *testing.T) {
 				Timing: rush.Timing{BuildMS: 3, RunnerMS: 4, ApplicationMS: 2, TotalMS: 6},
 			},
 			{File: "second.test.ts", Tests: []rush.TestResult{
-				{Name: "skipped", Status: "skipped"},
+				{Name: "skipped", Status: "skipped", SkipReason: "trusted input is unavailable"},
 				{Name: "pending", Status: "todo"},
 			}},
 		},
@@ -47,7 +47,7 @@ func TestConsoleReporterUsesCompactFileAndTestHierarchy(t *testing.T) {
 		"first.test.ts:\n(pass) adds values [0.50ms]",
 		"(fail) reports failures [2.00ms]\n  expected: yes\n  received: no",
 		"build 3.00ms | runner 4.00ms | application 2.00ms",
-		"second.test.ts:\n(skip) skipped\n(todo) pending",
+		"second.test.ts:\n(skip) skipped\n  trusted input is unavailable\n(todo) pending",
 		" 1 pass\n 1 fail\n 1 skip\n 1 todo",
 		"Ran 4 tests across 2 files. [125.00ms]",
 		"startup 75.00ms | request 50.00ms",

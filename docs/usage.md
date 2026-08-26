@@ -94,7 +94,7 @@ test("submits locally", ({ page }) => {
 });
 ```
 
-Synthetic calls are intentionally fast and remain inside the page. They do not claim `Event.isTrusted === true`. Use the explicit native path only for behavior that truly depends on operating-system input.
+Synthetic calls are intentionally fast and remain inside the page. They do not claim `Event.isTrusted === true`. Use the explicit native path only for behavior that truly depends on operating-system input. When the current backend cannot provide trusted input, a test that calls the native API is reported as skipped; permission, focus, and input-delivery errors on a supported backend still fail the test.
 
 ## Isolation and timing
 

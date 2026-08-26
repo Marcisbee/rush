@@ -63,6 +63,9 @@ func printResponse(output io.Writer, response rush.Response, options consoleOpti
 				duration = " " + options.paint(ansiDim, "["+formatMilliseconds(test.Duration)+"]")
 			}
 			fmt.Fprintf(output, "%s %s%s\n", options.paint(color, mark), test.Name, duration)
+			if test.SkipReason != "" {
+				fmt.Fprintln(output, options.paint(ansiDim, "  "+test.SkipReason))
+			}
 			if test.Error != "" {
 				writeFailure(output, test.Error, options)
 				if testIndex < len(suite.Tests)-1 {

@@ -167,7 +167,13 @@ const runtimeHTML = `<!doctype html>
 
   function makeNativeAutomation() {
     let readiness;
-    const prepare = () => readiness ||= window.__rushPrepareNativeInput();
+    const prepare = () => readiness ||= (async () => {
+      const capability = await window.__rushPrepareNativeInput();
+      if (capability?.available) return;
+      const error = new Error(capability?.reason || "trusted native input is unavailable");
+      error.name = "RushUnsupportedCapabilityError";
+      throw error;
+    })();
     const send = async (action, element, extra = {}) => {
       await prepare();
       const point = element ? await elementPoint(element) : {};
@@ -439,6 +445,7 @@ const runtimeHTML = `<!doctype html>
         status: item.state,
         duration_ms: item.durationMs,
         ...(item.error ? {error: formatError(item.error)} : {}),
+        ...(item.skipReason ? {skip_reason: item.skipReason} : {}),
       }));
       callbackWall = runResult.tests.reduce((sum, item) => sum + item.durationMs, 0);
     } catch (error) {

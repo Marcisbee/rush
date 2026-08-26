@@ -35,10 +35,11 @@ type Profile struct {
 }
 
 type TestResult struct {
-	Name     string  `json:"name"`
-	Status   string  `json:"status"`
-	Duration float64 `json:"duration_ms"`
-	Error    string  `json:"error,omitempty"`
+	Name       string  `json:"name"`
+	Status     string  `json:"status"`
+	Duration   float64 `json:"duration_ms"`
+	Error      string  `json:"error,omitempty"`
+	SkipReason string  `json:"skip_reason,omitempty"`
 }
 
 type SuiteResult struct {

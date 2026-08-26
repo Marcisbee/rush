@@ -265,7 +265,13 @@ async function runTest(
   const durationMs = performance.now() - started;
   results.push(failure === undefined
     ? { ...base, durationMs, state: "passed" }
+    : isUnsupportedCapabilityError(failure)
+      ? { ...base, durationMs, state: "skipped", skipReason: failure.message }
     : { ...base, durationMs, state: "failed", error: serializeError(failure) });
+}
+
+function isUnsupportedCapabilityError(error: unknown): error is Error {
+  return error instanceof Error && error.name === "RushUnsupportedCapabilityError";
 }
 
 function makeBrowserContext(): BrowserContext {
