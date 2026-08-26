@@ -142,6 +142,20 @@ describe("browser API", () => {
     expect(Date.now()).toBe(new Date("2026-01-01T00:00:00.500Z").getTime());
   });
 
+  test("lets queued browser work schedule timers before an async advance", async () => {
+    vi.useFakeTimers();
+    const pending = new Promise((resolve) => {
+      queueMicrotask(async () => {
+        await new Response("done").text();
+        setTimeout(() => resolve("done"), 300);
+      });
+    });
+
+    await vi.advanceTimersByTimeAsync(300);
+
+    await expect(pending).resolves.toBe("done");
+  });
+
   test("passes importOriginal to async mock factories", async () => {
     vi.mock("partial-module", async (importOriginal) => {
       const actual = await importOriginal<{ read(): string }>();

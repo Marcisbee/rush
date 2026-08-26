@@ -353,6 +353,13 @@ func (s *Server) run(request Request) Response {
 	cancel()
 	browserRoundtripMS := milliseconds(time.Since(browserStarted))
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) && len(bundles) == 1 {
+			response.Suites = []SuiteResult{timedOutSuite(bundles[0], timeout)}
+			response.Profile.BridgeMS = browserRoundtripMS
+			response.WallMS = milliseconds(time.Since(started))
+			response.Profile.NativeHostMS = max(0, response.WallMS-buildMS-browserRoundtripMS)
+			return response
+		}
 		response.Error = fmt.Sprintf("run suites: %v", err)
 		response.WallMS = milliseconds(time.Since(started))
 		return response
@@ -375,6 +382,20 @@ func (s *Server) run(request Request) Response {
 	response.WallMS = milliseconds(time.Since(started))
 	response.Profile.NativeHostMS = max(0, response.WallMS-buildMS-browserRoundtripMS)
 	return response
+}
+
+func timedOutSuite(bundle BuiltSuite, timeout time.Duration) SuiteResult {
+	duration := milliseconds(timeout)
+	return SuiteResult{
+		File: bundle.File,
+		Tests: []TestResult{{
+			Name:     "suite execution",
+			Status:   "failed",
+			Duration: duration,
+			Error:    fmt.Sprintf("suite exceeded the configured %s timeout", timeout),
+		}},
+		Timing: Timing{RunnerMS: duration, TotalMS: duration},
+	}
 }
 
 func writeReady(file *os.File, err error) {
