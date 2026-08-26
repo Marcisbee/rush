@@ -168,6 +168,24 @@ describe("static mock hoisting", () => {
     expect(transformed).not.toContain(`vi.mock("./service.js"`);
   });
 
+  test("initializes vi.hoisted state before mocks and delayed imports", async () => {
+    const transformed = await transformHoistedMocks(`
+      import { vi, test } from "rush-webtest";
+      import { read } from "./service.js";
+      const { state } = vi.hoisted(() => ({ state: { read: vi.fn(() => "mocked") } }));
+      vi.mock("./service.js", () => state);
+      test("mocked", () => read());
+    `);
+
+    const hoisted = transformed.indexOf("const { state } = __rushVi.hoisted");
+    const registration = transformed.indexOf(`__rushRegisterMock__("./service.js", () => state)`);
+    const delayedImport = transformed.indexOf(`await __rushImport__("./service.js"`);
+    expect(hoisted).not.toBe(-1);
+    expect(hoisted).toBeLessThan(registration);
+    expect(registration).toBeLessThan(delayedImport);
+    expect(transformed).not.toContain("const { state } = vi.hoisted");
+  });
+
   test("leaves modules without static mocks unchanged", async () => {
     const source = `import { test } from "rush-webtest"; test("ok", () => {});`;
     expect(await transformHoistedMocks(source)).toBe(source);

@@ -161,6 +161,74 @@ if (globalThis.__rushDependencyMockResult !== "mocked:real") {
 	}
 }
 
+func TestBuilderInitializesHoistedStateForAliasedDependencyMocks(t *testing.T) {
+	t.Setenv("RUSH_BROWSER_MODULE", "")
+	directory := t.TempDir()
+	service := filepath.Join(directory, "service.ts")
+	subject := filepath.Join(directory, "subject.ts")
+	suite := filepath.Join(directory, "subject.test.ts")
+	if err := os.WriteFile(service, []byte(`
+export function read() {
+  if (import.meta.hot) return "hot";
+  return "real";
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(subject, []byte(`
+import { read } from "virtual:service";
+export const load = () => read();
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(suite, []byte(`
+import { vi } from "rush-webtest";
+import { load } from "./subject";
+const state = vi.hoisted(() => ({ value: "mocked", read: vi.fn(() => "mocked") }));
+vi.mock("virtual:service", () => state);
+globalThis.__rushHoistedMockResult = load();
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	builder := NewBuilder(BuilderOptions{Aliases: map[string]string{"virtual:service": service}})
+	defer builder.Close()
+	bundle, _, err := builder.Build(directory, suite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(bundle, "import.meta.hot") {
+		t.Fatal("bundle retained Vite HMR syntax that script execution cannot parse")
+	}
+	runtime := `
+const mocks = new Map();
+globalThis.__rushBrowserRuntime = {
+  vi: {
+    fn(implementation) { return implementation; },
+    hoisted(factory) { return factory(); },
+  },
+  __rushRegisterMock__(id, factory) { mocks.set(id, factory); },
+  async __rushImport__(id, importer) {
+    const factory = mocks.get(id);
+    return factory ? factory(importer) : importer();
+  },
+};
+`
+	script := filepath.Join(directory, "execute.mjs")
+	if err := os.WriteFile(script, []byte(runtime+bundle+`
+await globalThis.__rushRegistration;
+if (globalThis.__rushHoistedMockResult !== "mocked") {
+  throw new Error("hoisted mock result: " + globalThis.__rushHoistedMockResult);
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	output, err := exec.Command("node", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("execute bundle: %v\n%s", err, output)
+	}
+}
+
 func TestBuilderReportsTypeScriptSyntaxErrors(t *testing.T) {
 	directory, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {

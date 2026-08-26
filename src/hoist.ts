@@ -16,6 +16,12 @@ interface MockCall {
   argumentsSource: string;
 }
 
+interface HoistedDeclaration {
+  start: number;
+  end: number;
+  source: string;
+}
+
 /**
  * Hoists top-level `vi.mock()` registrations and delays static imports until after
  * registration. The native builder calls this before esbuild; no host round trip is
@@ -24,9 +30,13 @@ interface MockCall {
 export async function transformHoistedMocks(source: string, options: HoistTransformOptions = {}): Promise<string> {
   const mocks = findMockCalls(source);
   if (mocks.length === 0) return source;
+  const hoisted = findHoistedDeclarations(source);
   await init;
   const [imports] = parse(source);
-  const replacements: Replacement[] = mocks.map((mock) => ({ start: mock.start, end: mock.end, value: "" }));
+  const replacements: Replacement[] = [
+    ...mocks.map((mock) => ({ start: mock.start, end: mock.end, value: "" })),
+    ...hoisted.map((declaration) => ({ start: declaration.start, end: declaration.end, value: "" })),
+  ];
 
   for (const item of imports) {
     if (item.d !== -1 || item.n === undefined) continue;
@@ -38,7 +48,9 @@ export async function transformHoistedMocks(source: string, options: HoistTransf
   }
 
   const runtimeImport = options.runtimeImport ?? "rush-webtest/internal";
-  const header = `import { __rushRegisterMock__, __rushImport__ } from ${JSON.stringify(runtimeImport)};\n${mocks.map((mock) => `__rushRegisterMock__(${mock.argumentsSource});`).join("\n")}\n`;
+  const runtimeImports = `__rushRegisterMock__, __rushImport__${hoisted.length > 0 ? ", vi as __rushVi" : ""}`;
+  const hoistedSource = hoisted.map((declaration) => rewriteHoistedVI(declaration.source)).join("\n");
+  const header = `import { ${runtimeImports} } from ${JSON.stringify(runtimeImport)};\n${hoistedSource}${hoistedSource ? "\n" : ""}${mocks.map((mock) => `__rushRegisterMock__(${mock.argumentsSource});`).join("\n")}\n`;
   return header + applyReplacements(source, replacements);
 }
 
@@ -116,6 +128,82 @@ function findMockCalls(source: string): MockCall[] {
     index += 1;
   }
   return calls;
+}
+
+function findHoistedDeclarations(source: string): HoistedDeclaration[] {
+  const declarations: HoistedDeclaration[] = [];
+  let index = 0;
+  let braceDepth = 0;
+  while (index < source.length) {
+    const character = source[index];
+    if (character === "\"" || character === "'" || character === "`") { index = skipString(source, index, character); continue; }
+    if (character === "/" && source[index + 1] === "/") { index = source.indexOf("\n", index + 2); if (index === -1) break; continue; }
+    if (character === "/" && source[index + 1] === "*") { const end = source.indexOf("*/", index + 2); index = end === -1 ? source.length : end + 2; continue; }
+    if (character === "{") { braceDepth += 1; index += 1; continue; }
+    if (character === "}") { braceDepth -= 1; index += 1; continue; }
+    if (braceDepth === 0 && isVariableDeclarationKeyword(source, index)) {
+      const newline = source.slice(index).search(/[\r\n]/);
+      const lineEnd = newline === -1 ? source.length : index + newline;
+      const line = source.slice(index, lineEnd);
+      const relative = line.indexOf("vi.hoisted");
+      if (relative === -1 || isIdentifier(line[relative - 1]) || isIdentifier(line[relative + "vi.hoisted".length])) { index += 1; continue; }
+      let open = index + relative + "vi.hoisted".length;
+      while (/\s/.test(source[open] ?? "")) open += 1;
+      if (source[open] !== "(") { index += 1; continue; }
+      const close = findClosingParenthesis(source, open);
+      let end = close + 1;
+      while (end < source.length && source[end] !== "\n" && source[end] !== "\r") end += 1;
+      declarations.push({ start: index, end, source: source.slice(index, end).trim() });
+      index = end;
+      continue;
+    }
+    index += 1;
+  }
+  return declarations;
+}
+
+function isVariableDeclarationKeyword(source: string, index: number): boolean {
+  return ["const", "let", "var"].some((keyword) => (
+    source.startsWith(keyword, index)
+    && !isIdentifier(source[index - 1])
+    && !isIdentifier(source[index + keyword.length])
+  ));
+}
+
+function rewriteHoistedVI(source: string): string {
+  let output = "";
+  let index = 0;
+  while (index < source.length) {
+    const character = source[index];
+    if (character === "\"" || character === "'" || character === "`") {
+      const end = skipString(source, index, character);
+      output += source.slice(index, end);
+      index = end;
+      continue;
+    }
+    if (character === "/" && source[index + 1] === "/") {
+      const end = source.indexOf("\n", index + 2);
+      const next = end === -1 ? source.length : end;
+      output += source.slice(index, next);
+      index = next;
+      continue;
+    }
+    if (character === "/" && source[index + 1] === "*") {
+      const end = source.indexOf("*/", index + 2);
+      const next = end === -1 ? source.length : end + 2;
+      output += source.slice(index, next);
+      index = next;
+      continue;
+    }
+    if (source.startsWith("vi", index) && !isIdentifier(source[index - 1]) && !isIdentifier(source[index + 2])) {
+      output += "__rushVi";
+      index += 2;
+      continue;
+    }
+    output += character;
+    index += 1;
+  }
+  return output;
 }
 
 function findClosingParenthesis(source: string, open: number): number {
