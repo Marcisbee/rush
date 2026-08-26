@@ -17,8 +17,10 @@
     "build": "tsc -p tsconfig.build.json",
     "bench": "./bin/rush bench",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "make test",
+    "test:browser": "make test-browser",
+    "test:bootstrap": "vitest run",
+    "test:bootstrap:watch": "vitest test/bootstrap.test.ts"
   },
   "dependencies": {
     "@sinonjs/fake-timers": "^15.0.0",

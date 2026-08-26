@@ -24,9 +24,7 @@ The native dependencies shown by `otool` must be Apple system libraries and fram
 ## Validate
 
 ```sh
-npm run check
-npm test
-go test ./...
+make test
 ./bin/rush doctor
 ./bin/rush test examples/basic.test.ts examples/browser-api.test.ts examples/javascript.test.js
 ./bin/rush stop

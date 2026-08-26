@@ -46,14 +46,15 @@ The current CLI does not yet invoke the adapter-independent collector. The macOS
 
 ## Checked-in GitHub Actions
 
-`.github/workflows/ci.yml` runs on every pull request and push to `main`:
+`.github/workflows/ci.yml` runs for code changes on pull requests and pushes to `main`; documentation-only changes are excluded:
 
-- `Go and browser API` installs pinned Go and Node toolchains, checks TypeScript, runs Vitest API tests, runs all Go tests, and repeats Go tests with the race detector.
-- `Linux WebKitGTK conformance and performance` installs the real WebKitGTK/Xvfb runtime, builds Rush, runs `doctor`, executes pooled browser and isolated-session examples, and enforces the built-in benchmark targets. Trusted XTest input remains a separate interactive-desktop validation because hosted runners do not provide reliable keyboard focus.
-- `Windows WebView2 adapter` runs the Windows Go packages and the real WebView2 harness for conformance, warm performance, bridge batching, failure capture, and realm reuse. Trusted `SendInput` remains a separate interactive-desktop validation because hosted runners do not provide reliable keyboard focus.
+- `TypeScript and Go contracts` checks TypeScript, runs the small Vitest bootstrap seam, builds the browser package, and runs the Go suite once with the race detector. A second non-race pass would execute the same tests without adding coverage.
+- `Linux WebKitGTK conformance and performance` installs the real WebKitGTK/Xvfb runtime, builds Rush, runs `doctor`, executes Rush's own browser API tests plus the pooled browser and isolated-session examples, and enforces the built-in benchmark targets. Trusted XTest input remains a separate interactive-desktop validation because hosted runners do not provide reliable keyboard focus.
 - The Linux job uploads raw benchmark JSON for 14 days even when the benchmark command misses a target.
 
-`.github/workflows/macos-adapter.yml` builds the TypeScript runtime and normal Go executable on macOS, runs the Objective-C/cgo adapter tests, executes representative suites through hidden WKWebView realms, and verifies that the executable links WebKit without external WebView or Swift runtime libraries.
+`.github/workflows/windows-adapter.yml` runs only when the Windows adapter, harness, or Go dependencies change. It needs Go but not Node or the built browser package, and runs the Windows packages plus the real WebView2 harness for conformance, warm performance, bridge batching, failure capture, and realm reuse. Trusted `SendInput` remains a separate interactive-desktop validation because hosted runners do not provide reliable keyboard focus.
+
+`.github/workflows/macos-adapter.yml` runs only when the macOS adapter, shared runtime, browser package, or build dependencies change. It builds the normal executable once, runs the Objective-C/cgo adapter tests, executes representative suites through hidden WKWebView realms, and verifies that the executable links WebKit without external WebView or Swift runtime libraries.
 
 A green core job alone is not evidence for a native adapter; use the corresponding real-WebView job or harness result.
 

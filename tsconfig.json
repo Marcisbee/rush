@@ -13,7 +13,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "dist",
-    "types": ["vitest/globals"]
+    "rootDir": "."
   },
   "include": ["src", "test", "vitest.config.ts"]
 }

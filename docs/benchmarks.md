@@ -50,6 +50,8 @@ The representative migration boundary is 12 Kodē files and exactly 100 tests co
 
 The initial single-WebView proof missed both requested outcomes. A rework with batched builds and cached factories reached a 387.9 ms Rush median against a 1,819.2 ms Vitest/jsdom median: 4.7× rather than the required 10×. Its separate warm 100-test median was 676.6 ms and passed the sub-second target.
 
+That single-realm run spent roughly 90–130 ms in real-browser suite execution before CLI startup, native dispatch, reset, result serialization, or repeated React module cleanup. Sharing one module graph could reduce that work but would weaken file-level mock, singleton, and module-state isolation, so the follow-up kept those boundaries and measured a bounded pool instead.
+
 A follow-up prototype kept three independently isolated WebKitGTK realms warm and preserved a separate bundle, module graph, registry, mock runtime, and full browser reset for every file. On its five-run method:
 
 | Measurement | Samples (ms) | Median | Verdict |

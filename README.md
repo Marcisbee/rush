@@ -111,15 +111,17 @@ Shell globs and multiple files are accepted. The adapter-independent command pac
 - [WPE WebKit evaluation](docs/wpe-evaluation.md)
 - [macOS WKWebView build and validation](docs/macos-wkwebview.md)
 
+## Repository layout
+
+`src/` is the browser package. `internal/rush/` is the Linux and macOS CLI runtime, while `internal/wkwebview/`, `platform/webview2/`, and `native/wpe/` contain the platform adapters. The small top-level Go packages define adapter-independent commands, execution, reporting, artifacts, and watch contracts. Product examples live in `examples/`, measured workloads in `benchmarks/`, and tests in `test/`.
+
+Rush runs `test/browser.test.ts` in its own real WebView. Vitest is intentionally limited to `test/bootstrap.test.ts`, which resets Rush's registry, snapshot state, and injected adapters; doing that from the registry currently executing the test would invalidate the runner under test.
+
 ## Verification
 
 ```sh
 npm ci
-npm run check
-npm test
-go test ./...
-go test -race ./...
-make build
+make test
 ./bin/rush test examples/basic.test.ts examples/browser-api.test.ts examples/javascript.test.js examples/react.test.tsx
 RUSH_WEBVIEW_POOL_SIZE=1 ./bin/rush test examples/app-automation.test.ts
 ./bin/rush stop
@@ -128,4 +130,4 @@ RUSH_WEBVIEW_POOL_SIZE=1 ./bin/rush test examples/app-automation.test.ts
 go build ./cmd/rush # uses Objective-C/cgo automatically on macOS
 ```
 
-GitHub Actions runs the Go and TypeScript checks, a real WebKitGTK/Xvfb example run, the measured benchmark contract, the Windows WebView2 harness, and the Objective-C/cgo WKWebView adapter through the normal macOS CLI. The macOS job also rejects Swift and external WebView library linkage. Benchmark JSON is retained as a workflow artifact so a pass can be audited from its raw samples.
+GitHub Actions runs the Go race and TypeScript bootstrap checks in parallel with the real WebKitGTK/Xvfb self-test, examples, and measured benchmark contract. Path-filtered workflows validate the Windows WebView2 and macOS WKWebView adapters only when their implementations or dependencies change. The macOS job also rejects Swift and external WebView library linkage. Benchmark JSON is retained as a workflow artifact so a pass can be audited from its raw samples.

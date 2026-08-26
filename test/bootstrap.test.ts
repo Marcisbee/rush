@@ -1,24 +1,36 @@
-import { beforeEach as vitestBeforeEach, describe as vitestDescribe, expect as assert, test as vitestTest, vi as vitestVi } from "vitest";
+import {
+  beforeEach as vitestBeforeEach,
+  describe as vitestDescribe,
+  expect as assert,
+  test as vitestTest,
+  vi as vitestVi,
+} from "vitest";
 import {
   afterAll,
   afterEach,
   beforeAll,
   beforeEach,
   configureRuntime,
+  configureSnapshots,
+  createPage,
   describe,
   expect as rushExpect,
+  getSnapshotValues,
+  native,
   resetRegistry,
   run,
   test,
 } from "../src/index.js";
+import { enterSnapshotTest, leaveSnapshotTest } from "../src/snapshots.js";
 
 vitestBeforeEach(() => {
   resetRegistry();
   configureRuntime({});
+  configureSnapshots();
   document.body.innerHTML = "";
 });
 
-vitestDescribe("suite registry", () => {
+vitestDescribe("suite bootstrap", () => {
   vitestTest("runs nested hooks and parameterized tests in page order", async () => {
     const events: string[] = [];
     describe("math", () => {
@@ -54,7 +66,9 @@ vitestDescribe("suite registry", () => {
       test("ordinary", called);
     });
     test.only("focused", called);
+
     const result = await run({ emit: false });
+
     assert(result.tests.map(({ name, state }) => [name, state])).toEqual([
       ["ordinary", "skipped"],
       ["focused", "passed"],
@@ -67,13 +81,15 @@ vitestDescribe("suite registry", () => {
     const emitResults = vitestVi.fn();
     configureRuntime({ emitResults });
     test("works", () => {});
+
     await run();
+
     assert(emitResults).toHaveBeenCalledOnce();
     assert(emitResults.mock.calls[0]?.[0]).toHaveLength(1);
   });
 });
 
-vitestDescribe("test models", () => {
+vitestDescribe("runtime adapter injection", () => {
   vitestTest("provides browser and app contexts", async () => {
     const navigations: string[] = [];
     configureRuntime({ navigate: async (url) => { navigations.push(url); } });
@@ -87,6 +103,7 @@ vitestDescribe("test models", () => {
     });
 
     const result = await run({ emit: false });
+
     assert(result.failed).toBe(0);
     assert(navigations).toEqual(["https://example.test/account"]);
   });
@@ -126,11 +143,12 @@ vitestDescribe("test models", () => {
     });
 
     const result = await run({ emit: false });
+
     assert(result.failed).toBe(0);
     assert(disposed).toEqual([1, 2]);
   });
 
-  vitestTest("matches application-realm DOM state like browser-realm DOM state", async () => {
+  vitestTest("matches DOM state across browser and application realms", async () => {
     configureRuntime({
       createApp: () => {
         const frame = document.createElement("iframe");
@@ -199,7 +217,34 @@ vitestDescribe("test models", () => {
     });
 
     const result = await run({ emit: false });
+
     assert(result.failed).toBe(0);
     assert(disposed).toEqual(["alice", "bob"]);
+  });
+
+  vitestTest("keeps trusted automation behind the injected adapter", async () => {
+    document.body.innerHTML = `<button type="button">Save</button>`;
+    const page = createPage();
+    await assert(native.click(page.getByRole("button"))).rejects.toThrow("Trusted native automation is unavailable");
+
+    const click = vitestVi.fn(async () => {});
+    configureRuntime({ native: { click, type: async () => {}, press: async () => {} } });
+    await native.click(page.getByRole("button"));
+    assert(click).toHaveBeenCalledWith(page.getByRole("button").element());
+  });
+});
+
+vitestDescribe("snapshot bootstrap", () => {
+  vitestTest("records and compares snapshots by test name", () => {
+    enterSnapshotTest("suite > snapshot");
+    rushExpect({ beta: 2, alpha: 1 }).toMatchSnapshot();
+    assert(getSnapshotValues()).toEqual({
+      "suite > snapshot > 1": "{\"alpha\": 1, \"beta\": 2}",
+    });
+
+    configureSnapshots({ values: getSnapshotValues(), update: "none" });
+    enterSnapshotTest("suite > snapshot");
+    rushExpect({ alpha: 1, beta: 2 }).toMatchSnapshot();
+    leaveSnapshotTest();
   });
 });

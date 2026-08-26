@@ -1,0 +1,42 @@
+name: Windows WebView2 adapter
+
+on:
+  pull_request:
+    paths:
+      - "cmd/rush-webview2-harness/**"
+      - "harness/**"
+      - "platform/webview2/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/windows-adapter.yml"
+  push:
+    branches: [main]
+    paths:
+      - "cmd/rush-webview2-harness/**"
+      - "harness/**"
+      - "platform/webview2/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/windows-adapter.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rush-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  conformance:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test Windows host packages
+        run: go test ./platform/webview2 ./harness
+      - name: Run real WebView2 conformance harness
+        run: go run ./cmd/rush-webview2-harness -repeats 5 -trusted-input=false
