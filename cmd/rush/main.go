@@ -17,9 +17,13 @@ import (
 	"github.com/Marcisbee/rush/internal/rush"
 )
 
+var errTestsFailed = errors.New("tests failed")
+
 func main() {
 	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
-		fmt.Fprintln(os.Stderr, "rush:", err)
+		if err != errTestsFailed {
+			fmt.Fprintln(os.Stderr, "rush:", err)
+		}
 		os.Exit(1)
 	}
 }
@@ -86,7 +90,11 @@ func runTests(args []string, stdout, stderr io.Writer) (runErr error) {
 	if err != nil {
 		return err
 	}
-	defer func() { runErr = errors.Join(runErr, host.Close()) }()
+	defer func() {
+		if closeErr := host.Close(); closeErr != nil {
+			runErr = errors.Join(runErr, closeErr)
+		}
+	}()
 	watchContext := context.Background()
 	if *watch {
 		ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt)

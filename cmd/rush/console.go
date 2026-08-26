@@ -46,7 +46,7 @@ func printResponse(output io.Writer, response rush.Response, options consoleOpti
 			fmt.Fprintln(output)
 		}
 		fmt.Fprintln(output, options.paint(ansiBold, suite.File+":"))
-		for _, test := range suite.Tests {
+		for testIndex, test := range suite.Tests {
 			mark, color := options.testMark(test.Status)
 			switch test.Status {
 			case "passed":
@@ -64,7 +64,10 @@ func printResponse(output io.Writer, response rush.Response, options consoleOpti
 			}
 			fmt.Fprintf(output, "%s %s%s\n", options.paint(color, mark), test.Name, duration)
 			if test.Error != "" {
-				fmt.Fprintln(output, options.paint(ansiRed, indent(test.Error, "  ")))
+				writeFailure(output, test.Error, options)
+				if testIndex < len(suite.Tests)-1 {
+					fmt.Fprintln(output)
+				}
 			}
 		}
 		if options.verbose {
@@ -108,7 +111,7 @@ func printResponse(output io.Writer, response rush.Response, options consoleOpti
 		fmt.Fprintln(output, options.paint(ansiDim, details))
 	}
 	if failed > 0 {
-		return fmt.Errorf("%d test(s) failed", failed)
+		return errTestsFailed
 	}
 	return nil
 }
@@ -161,9 +164,64 @@ func (options consoleOptions) paint(color, text string) string {
 	return color + text + ansiReset
 }
 
-func indent(value, prefix string) string {
-	value = strings.TrimRight(value, "\n")
-	return prefix + strings.ReplaceAll(value, "\n", "\n"+prefix)
+func writeFailure(output io.Writer, value string, options consoleOptions) {
+	lines := formatFailure(value)
+	for index, line := range lines {
+		if line == "" {
+			fmt.Fprintln(output)
+			continue
+		}
+		line = "  " + line
+		if index == 0 {
+			line = options.paint(ansiRed, line)
+		}
+		fmt.Fprintln(output, line)
+	}
+}
+
+func formatFailure(value string) []string {
+	lines := strings.Split(strings.TrimRight(value, "\n"), "\n")
+	for len(lines) > 1 && isUselessWebKitFrame(lines[len(lines)-1]) {
+		lines = lines[:len(lines)-1]
+	}
+	accessible := false
+	formatted := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "Here are the accessible roles:" {
+			accessible = true
+			line = "Accessible roles:"
+			trimmed = line
+		}
+		if accessible && strings.Trim(trimmed, "-") == "" && trimmed != "" {
+			continue
+		}
+		if accessible && strings.HasPrefix(trimmed, "Ignored nodes:") {
+			accessible = false
+			if len(formatted) > 0 && formatted[len(formatted)-1] != "" {
+				formatted = append(formatted, "")
+			}
+		}
+		if accessible && trimmed == "" {
+			continue
+		}
+		if accessible && strings.HasPrefix(line, "  ") && (strings.HasPrefix(trimmed, "Name ") || strings.HasPrefix(trimmed, "<")) {
+			line = "  " + line
+		}
+		if line == "" && (len(formatted) == 0 || formatted[len(formatted)-1] == "") {
+			continue
+		}
+		formatted = append(formatted, line)
+	}
+	for len(formatted) > 0 && formatted[len(formatted)-1] == "" {
+		formatted = formatted[:len(formatted)-1]
+	}
+	return formatted
+}
+
+func isUselessWebKitFrame(line string) bool {
+	line = strings.TrimSpace(line)
+	return line == "@" || strings.HasSuffix(line, "@") && !strings.Contains(line, "://")
 }
 
 func formatMilliseconds(value float64) string {

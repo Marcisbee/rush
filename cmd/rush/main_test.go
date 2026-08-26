@@ -40,8 +40,8 @@ func TestConsoleReporterUsesCompactFileAndTestHierarchy(t *testing.T) {
 	}
 	var output bytes.Buffer
 	err := printResponse(&output, response, consoleOptions{verbose: true})
-	if err == nil {
-		t.Fatal("expected failed-test error")
+	if err != errTestsFailed {
+		t.Fatalf("reporter error = %v; want reported failure sentinel", err)
 	}
 	for _, expected := range []string{
 		"first.test.ts:\n(pass) adds values [0.50ms]",
@@ -58,6 +58,35 @@ func TestConsoleReporterUsesCompactFileAndTestHierarchy(t *testing.T) {
 	}
 	if strings.Contains(output.String(), "\x1b[") {
 		t.Fatalf("non-terminal output contains ANSI escapes: %q", output.String())
+	}
+}
+
+func TestFailureFormatterCompactsTestingLibraryDiagnostics(t *testing.T) {
+	raw := "TestingLibraryElementError: Unable to find button\n\n" +
+		"Here are the accessible roles:\n\n" +
+		"  main:\n\n" +
+		"  Name \"\":\n" +
+		"  <main />\n\n" +
+		"  --------------------------------------------------\n" +
+		"  button:\n\n" +
+		"  Name \"Wrong\":\n" +
+		"  <button />\n\n" +
+		"Ignored nodes: comments, script, style\n" +
+		"<body>\n  <main />\n</body>\n" +
+		"getElementError@\n@\nrunTest@\n"
+	got := strings.Join(formatFailure(raw), "\n")
+	want := "TestingLibraryElementError: Unable to find button\n\n" +
+		"Accessible roles:\n" +
+		"  main:\n" +
+		"    Name \"\":\n" +
+		"    <main />\n" +
+		"  button:\n" +
+		"    Name \"Wrong\":\n" +
+		"    <button />\n\n" +
+		"Ignored nodes: comments, script, style\n" +
+		"<body>\n  <main />\n</body>"
+	if got != want {
+		t.Fatalf("formatted failure:\n%s\n\nwant:\n%s", got, want)
 	}
 }
 
