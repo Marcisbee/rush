@@ -29,6 +29,83 @@ describe("browser API", () => {
     await expect(Promise.reject(new Error("nope"))).rejects.toBeInstanceOf(Error);
   });
 
+  test("preserves custom matchers across assertion chains", async () => {
+    expect.extend({
+      toBeDivisibleBy(received, divisor) {
+        return { pass: typeof received === "number" && typeof divisor === "number" && received % divisor === 0 };
+      },
+    });
+
+    (expect(8) as any).toBeDivisibleBy(2);
+    (expect(7).not as any).toBeDivisibleBy(2);
+    await (expect(Promise.resolve(8)).resolves as any).toBeDivisibleBy(2);
+    await (expect(Promise.resolve(7)).resolves.not as any).toBeDivisibleBy(2);
+    await (expect(Promise.reject(8)).rejects as any).toBeDivisibleBy(2);
+  });
+
+  test("matches rejected errors with toThrow", async () => {
+    await expect(Promise.reject(new Error("nope"))).rejects.toThrow("nope");
+    await expect(Promise.reject(new TypeError("wrong type"))).rejects.toThrow(TypeError);
+    await expect(Promise.reject(new Error("nope"))).rejects.not.toThrow("different");
+  });
+
+  test("supports remaining core and DOM matchers", () => {
+    const parent = document.createElement("div");
+    const child = document.createElement("span");
+    const comment = document.createComment("ignored");
+    parent.append(child);
+
+    expect("saved").toBeTypeOf("string");
+    expect(null).toBeTypeOf("object");
+    expect(parent).toContainElement(child);
+    expect(child).not.toContainElement(parent);
+    expect(parent).not.toBeEmptyDOMElement();
+    expect(child).toBeEmptyDOMElement();
+    child.append(comment);
+    expect(child).toBeEmptyDOMElement();
+    child.append(" ");
+    expect(child).not.toBeEmptyDOMElement();
+  });
+
+  test("waits for synchronous and asynchronous callbacks with vi.waitFor", async () => {
+    let attempts = 0;
+    const value = await vi.waitFor(() => {
+      attempts += 1;
+      if (attempts < 3) throw new Error("not ready");
+      return "ready";
+    }, { interval: 1, timeout: 20 });
+
+    let asynchronousAttempts = 0;
+    const asynchronousValue = await vi.waitFor(async () => {
+      asynchronousAttempts += 1;
+      if (asynchronousAttempts < 2) throw new Error("not ready");
+      return 42;
+    }, 20);
+
+    expect(value).toBe("ready");
+    expect(attempts).toBe(3);
+    expect(asynchronousValue).toBe(42);
+    expect(asynchronousAttempts).toBe(2);
+
+    await expect(vi.waitFor(() => {
+      throw new Error("still pending");
+    }, { interval: 1, timeout: 2 })).rejects.toThrow("still pending");
+  });
+
+  test("advances fake timers while waiting with vi.waitFor", async () => {
+    vi.useFakeTimers();
+    let ready = false;
+    setTimeout(() => { ready = true; }, 20);
+
+    const value = await vi.waitFor(() => {
+      expect(ready).toBe(true);
+      return "ready";
+    }, { interval: 10, timeout: 30 });
+
+    expect(value).toBe("ready");
+    expect(Date.now()).toBe(20);
+  });
+
   test.browser("queries and interacts with the real DOM", ({ page }) => {
     const input = page.getByTestId("name");
     const inputTrust: boolean[] = [];
