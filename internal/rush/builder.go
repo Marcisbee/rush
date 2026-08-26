@@ -78,7 +78,11 @@ func (b *Builder) BuildBatch(cwd string, names []string) ([]BuiltSuite, float64,
 		if err != nil {
 			return nil, 0, err
 		}
-		absFiles[index] = filepath.Clean(abs)
+		canonical, err := filepath.EvalSymlinks(abs)
+		if err != nil {
+			return nil, 0, err
+		}
+		absFiles[index] = filepath.Clean(canonical)
 	}
 	jsxImportSource := detectJSXImportSource(cwd)
 	absCWD, err := filepath.Abs(cwd)

@@ -99,6 +99,11 @@ func TestBuilderBatchesSuitesAndCachesUnchangedDependencyGraph(t *testing.T) {
 func TestBuilderAppliesAsyncMocksToDependenciesImportedBySubject(t *testing.T) {
 	t.Setenv("RUSH_BROWSER_MODULE", "")
 	directory := t.TempDir()
+	linkedParent := t.TempDir()
+	linkedDirectory := filepath.Join(linkedParent, "project")
+	if err := os.Symlink(directory, linkedDirectory); err != nil {
+		t.Fatal(err)
+	}
 	service := filepath.Join(directory, "service.ts")
 	subjectDirectory := filepath.Join(directory, "subject")
 	if err := os.Mkdir(subjectDirectory, 0700); err != nil {
@@ -126,7 +131,7 @@ globalThis.__rushDependencyMockResult = load();
 
 	builder := NewBuilder()
 	defer builder.Close()
-	bundle, _, err := builder.Build(directory, suite)
+	bundle, _, err := builder.Build(linkedDirectory, filepath.Join(linkedDirectory, filepath.Base(suite)))
 	if err != nil {
 		t.Fatal(err)
 	}
