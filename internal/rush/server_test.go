@@ -7,6 +7,20 @@ import (
 	"time"
 )
 
+func TestTimedOutSuiteReportsAStandardFailure(t *testing.T) {
+	got := timedOutSuite(BuiltSuite{File: "slow.test.ts"}, 30*time.Second)
+	if got.File != "slow.test.ts" || len(got.Tests) != 1 {
+		t.Fatalf("timed-out suite = %#v", got)
+	}
+	result := got.Tests[0]
+	if result.Name != "suite execution" || result.Status != "failed" || result.Duration != 30_000 || result.Error != "suite exceeded the configured 30s timeout" {
+		t.Fatalf("timed-out result = %#v", result)
+	}
+	if got.Timing.RunnerMS != 30_000 || got.Timing.TotalMS != 30_000 {
+		t.Fatalf("timed-out timing = %#v", got.Timing)
+	}
+}
+
 func TestLifetimePipeStopsHostWhenParentDisappears(t *testing.T) {
 	reader, writer, err := os.Pipe()
 	if err != nil {

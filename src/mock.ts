@@ -1,4 +1,4 @@
-import FakeTimers, { type Clock, type Config } from "@sinonjs/fake-timers";
+import FakeTimers, { type Clock, type Config, type FakeMethod } from "@sinonjs/fake-timers";
 import type { Awaitable } from "./types.js";
 
 export interface MockResult<T = unknown> {
@@ -150,7 +150,10 @@ let clock: Clock | undefined;
 
 export function useFakeTimers(options: Config = {}): Clock {
   if (clock) clock.uninstall();
-  clock = FakeTimers.withGlobal(globalThis).install(options);
+  const timers = FakeTimers.withGlobal(globalThis);
+  const toFake = options.toFake ?? (Object.keys(timers.timers) as FakeMethod[])
+    .filter((method) => method !== "nextTick" && method !== "queueMicrotask");
+  clock = timers.install({ ...options, toFake });
   return clock;
 }
 
