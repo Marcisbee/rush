@@ -17,12 +17,11 @@ test: test-static test-browser
 
 test-static: build
 	$(NPM) run check
-	$(NPM) run test:bootstrap
 	go test -race ./...
 
 test-browser: build
 	@set -e; trap './bin/rush stop >/dev/null 2>&1 || true' EXIT; \
-		./bin/rush test test/browser.test.ts
+		./bin/rush test test/*.test.ts
 
 bench: build
 	./bin/rush bench

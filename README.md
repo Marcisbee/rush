@@ -115,7 +115,7 @@ Shell globs and multiple files are accepted. The adapter-independent command pac
 
 `src/` is the browser package. `internal/rush/` is the Linux and macOS CLI runtime, while `internal/wkwebview/`, `platform/webview2/`, and `native/wpe/` contain the platform adapters. The small top-level Go packages define adapter-independent commands, execution, reporting, artifacts, and watch contracts. Product examples live in `examples/`, measured workloads in `benchmarks/`, and tests in `test/`.
 
-Rush runs `test/browser.test.ts` in its own real WebView. Vitest is intentionally limited to `test/bootstrap.test.ts`, which resets Rush's registry, snapshot state, and injected adapters; doing that from the registry currently executing the test would invalidate the runner under test.
+Rush runs every TypeScript test in `test/` through its own real WebView. The self-tests exercise the public runner contract; native app and session behavior is covered by the corresponding real-adapter examples.
 
 ## Verification
 
@@ -130,4 +130,4 @@ RUSH_WEBVIEW_POOL_SIZE=1 ./bin/rush test examples/app-automation.test.ts
 go build ./cmd/rush # uses Objective-C/cgo automatically on macOS
 ```
 
-GitHub Actions runs the Go race and TypeScript bootstrap checks in parallel with the real WebKitGTK/Xvfb self-test, examples, and measured benchmark contract. Path-filtered workflows validate the Windows WebView2 and macOS WKWebView adapters only when their implementations or dependencies change. The macOS job also rejects Swift and external WebView library linkage. Benchmark JSON is retained as a workflow artifact so a pass can be audited from its raw samples.
+GitHub Actions runs the Go race and TypeScript checks in parallel with the real WebKitGTK/Xvfb self-test, examples, and measured benchmark contract. Path-filtered workflows validate the Windows WebView2 and macOS WKWebView adapters only when their implementations or dependencies change. The macOS job also rejects Swift and external WebView library linkage. Benchmark JSON is retained as a workflow artifact so a pass can be audited from its raw samples.

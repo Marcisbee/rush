@@ -48,7 +48,7 @@ The current CLI does not yet invoke the adapter-independent collector. The macOS
 
 `.github/workflows/ci.yml` runs for code changes on pull requests and pushes to `main`; documentation-only changes are excluded:
 
-- `TypeScript and Go contracts` checks TypeScript, runs the small Vitest bootstrap seam, builds the browser package, and runs the Go suite once with the race detector. A second non-race pass would execute the same tests without adding coverage.
+- `TypeScript and Go contracts` checks and builds the browser package, then runs the Go suite once with the race detector. A second non-race pass would execute the same tests without adding coverage.
 - `Linux WebKitGTK conformance and performance` installs the real WebKitGTK/Xvfb runtime, builds Rush, runs `doctor`, executes Rush's own browser API tests plus the pooled browser and isolated-session examples, and enforces the built-in benchmark targets. Trusted XTest input remains a separate interactive-desktop validation because hosted runners do not provide reliable keyboard focus.
 - The Linux job uploads raw benchmark JSON for 14 days even when the benchmark command misses a target.
 

@@ -36,8 +36,6 @@ jobs:
       - run: npm ci
       - name: Check browser API types
         run: npm run check
-      - name: Test runner bootstrap seam
-        run: npm run test:bootstrap
       - name: Build browser API
         run: npm run build
       - name: Test native host contracts for races
@@ -69,7 +67,7 @@ jobs:
       - name: Run Rush self-test and real-browser examples
         run: >-
           ./bin/rush test
-          test/browser.test.ts
+          test/*.test.ts
           examples/basic.test.ts
           examples/browser-api.test.ts
           examples/javascript.test.js
