@@ -37,7 +37,7 @@ export async function transformHoistedMocks(source: string, options: HoistTransf
     replacements.push({ start: item.ss, end: item.se, value: rewriteImport(statement, item.n) });
   }
 
-  const runtimeImport = options.runtimeImport ?? "@rush/browser/internal";
+  const runtimeImport = options.runtimeImport ?? "rush-webtest/internal";
   const header = `import { __rushRegisterMock__, __rushImport__ } from ${JSON.stringify(runtimeImport)};\n${mocks.map((mock) => `__rushRegisterMock__(${mock.argumentsSource});`).join("\n")}\n`;
   return header + applyReplacements(source, replacements);
 }

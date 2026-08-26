@@ -413,7 +413,7 @@ const runtimeHTML = `<!doctype html>
       if (globalThis.__rushRegistration) await globalThis.__rushRegistration;
       const api = globalThis.__rushBrowserModule;
       if (!api || typeof api.run !== "function") {
-        throw new Error("suite bundle did not expose the @rush/browser runtime");
+        throw new Error("suite bundle did not expose the rush-webtest runtime");
       }
       api.configureRuntime({createApp: createAppRealm, createSession});
       const runResult = await api.run({emit: false});

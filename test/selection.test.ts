@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test, vi } from "@rush/browser";
+import { afterAll, beforeAll, describe, expect, test, vi } from "rush-webtest";
 
 const selected = vi.fn(() => {});
 const unrelatedHook = vi.fn(() => {});

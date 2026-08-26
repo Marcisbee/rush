@@ -15,7 +15,7 @@ All three models execute through the Linux WebKitGTK CLI on this revision. App a
 Use browser tests for behavior that can run in the runner page:
 
 ```ts
-import { expect, test } from "@rush/browser";
+import { expect, test } from "rush-webtest";
 
 test.browser("renders a component state", ({ document, page }) => {
   document.body.innerHTML = `<output aria-label="Status">ready</output>`;
@@ -30,7 +30,7 @@ Browser tests can use the real DOM, Selection, same-origin iframes, Shadow DOM r
 Use app tests when navigation and origin behavior are part of the assertion:
 
 ```ts
-import { expect, test } from "@rush/browser";
+import { expect, test } from "rush-webtest";
 
 test.app("loads the account route", async ({ goto, page, window }) => {
   await goto("http://127.0.0.1:4173/account");
@@ -48,7 +48,7 @@ Start application servers outside Rush and use loopback URLs with deterministic 
 Session tests declare either a count or stable client names:
 
 ```ts
-import { expect, test } from "@rush/browser";
+import { expect, test } from "rush-webtest";
 
 test.session({ clients: ["alice", "bob"] })("isolates clients", async ({ client }) => {
   const alice = client("alice");
@@ -75,7 +75,7 @@ Synthetic locator operations dispatch DOM events in the page. They are the prefe
 Trusted automation uses the explicit `native` API or locator-native methods:
 
 ```ts
-import { expect, native, test, waitFor } from "@rush/browser";
+import { expect, native, test, waitFor } from "rush-webtest";
 
 test.app("uses browser-default editing", async ({ goto, page }) => {
   await goto("http://127.0.0.1:4173/editor");

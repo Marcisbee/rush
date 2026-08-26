@@ -1,4 +1,4 @@
-import { expect, test } from "@rush/browser"
+import { expect, test } from "rush-webtest"
 
 test("WebKitGTK smoke", () => {
   const element = document.createElement("button")

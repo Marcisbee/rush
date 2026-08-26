@@ -1,7 +1,29 @@
 {
-  "name": "@rush/browser",
-  "private": true,
+  "name": "rush-webtest",
+  "version": "0.1.0",
+  "description": "A persistent WebView-native JavaScript and TypeScript test runner",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Marcisbee/rush.git"
+  },
+  "homepage": "https://github.com/Marcisbee/rush#readme",
+  "bugs": {
+    "url": "https://github.com/Marcisbee/rush/issues"
+  },
+  "keywords": [
+    "browser",
+    "testing",
+    "test-runner",
+    "webview"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -17,6 +39,7 @@
     "build": "tsc -p tsconfig.build.json",
     "bench": "./bin/rush bench",
     "check": "tsc -p tsconfig.json --noEmit",
+    "prepack": "tsc -p tsconfig.build.json",
     "test": "make test",
     "test:browser": "make test-browser"
   },

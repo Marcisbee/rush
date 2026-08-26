@@ -45,7 +45,7 @@ The checked-in Linux runtime assigns files deterministically across a bounded po
 
 The repository intentionally separates:
 
-1. The in-page `@rush/browser` API.
+1. The in-page `rush-webtest` API.
 2. Adapter-independent Go contracts for commands, watch selection, results, reporters, artifacts, and timing.
 3. Native browser adapters.
 4. The executable that wires one adapter to those contracts.
@@ -63,4 +63,4 @@ Passing tests in one layer do not imply that another layer is integrated. The cu
 
 ## Privacy and naming
 
-Keep the repository, source-built browser package, binaries, benchmark artifacts, and consumer links private while the architecture and names are validated. Do not reserve public package names, publish binaries, add public badges, or describe `rush` and `@rush/browser` as stable product identifiers.
+The public browser API package is `rush-webtest`. Native binaries remain source-built artifacts and are not an npm distribution contract.
