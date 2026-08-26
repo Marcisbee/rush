@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -13,6 +14,40 @@ import (
 
 	"github.com/Marcisbee/rush/internal/rush"
 )
+
+func TestJSONReporterReturnsFailureAfterWritingDiagnostics(t *testing.T) {
+	for _, testName := range []string{"reports failures", "suite registration"} {
+		t.Run(testName, func(t *testing.T) {
+			response := rush.Response{Suites: []rush.SuiteResult{{
+				File:  "broken.test.ts",
+				Tests: []rush.TestResult{{Name: testName, Status: "failed", Error: "intentional failure"}},
+			}}}
+			var output bytes.Buffer
+
+			err := writeJSONResponse(&output, response)
+			if !errors.Is(err, errTestsFailed) {
+				t.Fatalf("reporter error = %v; want test failure sentinel", err)
+			}
+			var decoded rush.Response
+			if err := json.Unmarshal(output.Bytes(), &decoded); err != nil {
+				t.Fatalf("decode JSON diagnostics: %v\noutput: %s", err, output.String())
+			}
+			if !reflect.DeepEqual(decoded, response) {
+				t.Fatalf("decoded response = %#v; want %#v", decoded, response)
+			}
+		})
+	}
+}
+
+func TestJSONReporterReturnsSuccessForPassingTests(t *testing.T) {
+	response := rush.Response{Suites: []rush.SuiteResult{{
+		File:  "passing.test.ts",
+		Tests: []rush.TestResult{{Name: "passes", Status: "passed"}},
+	}}}
+	if err := writeJSONResponse(&bytes.Buffer{}, response); err != nil {
+		t.Fatalf("reporter error = %v; want success", err)
+	}
+}
 
 func TestMedian(t *testing.T) {
 	if got := median([]float64{9, 1, 4, 2, 8}); got != 4 {

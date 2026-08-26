@@ -143,9 +143,7 @@ func runTests(args []string, stdout, stderr io.Writer) (runErr error) {
 		return err
 	}
 	if *jsonOutput {
-		encoder := json.NewEncoder(stdout)
-		encoder.SetIndent("", "  ")
-		return encoder.Encode(response)
+		return writeJSONResponse(stdout, response)
 	}
 	console := consoleOptionsFor(stdout, *verbose)
 	if err != nil {
@@ -190,6 +188,18 @@ func runTests(args []string, stdout, stderr io.Writer) (runErr error) {
 		}
 		_ = printResponse(stdout, response, console)
 	}
+}
+
+func writeJSONResponse(output io.Writer, response rush.Response) error {
+	encoder := json.NewEncoder(output)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(response); err != nil {
+		return err
+	}
+	if failedTests(response) > 0 {
+		return errTestsFailed
+	}
+	return nil
 }
 
 func expandFiles(arguments []string) ([]string, error) {
