@@ -130,20 +130,101 @@ func (b *Builder) BuildBatch(cwd string, names []string) ([]BuiltSuite, float64,
 		for _, path := range absFiles {
 			hoistedFiles[filepath.Clean(path)] = true
 		}
+		var mockResolutionMu sync.RWMutex
+		resolvedMocksByFile := make(map[string]map[string]string, len(absFiles))
+		mockedTargets := make(map[string]bool)
 		hoistPlugin := api.Plugin{
 			Name: "rush-hoisted-mocks",
 			Setup: func(build api.PluginBuild) {
-				build.OnLoad(api.OnLoadOptions{Filter: ".*", Namespace: "file"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
-					if !hoistedFiles[filepath.Clean(args.Path)] {
-						return api.OnLoadResult{}, nil
+				build.OnStart(func() (api.OnStartResult, error) {
+					nextByFile := make(map[string]map[string]string, len(absFiles))
+					nextTargets := make(map[string]bool)
+					for _, path := range absFiles {
+						source, readErr := os.ReadFile(path)
+						if readErr != nil {
+							return api.OnStartResult{}, readErr
+						}
+						mocks, findErr := findMockCalls(string(source))
+						if findErr != nil {
+							return api.OnStartResult{}, findErr
+						}
+						resolved := make(map[string]string, len(mocks))
+						for _, mock := range mocks {
+							sourceID, sourceErr := mockModuleID(mock.arguments)
+							if sourceErr != nil {
+								return api.OnStartResult{}, sourceErr
+							}
+							result := build.Resolve(sourceID, api.ResolveOptions{
+								PluginName: "rush-hoisted-mocks",
+								ResolveDir: filepath.Dir(path),
+								Kind:       api.ResolveJSImportStatement,
+							})
+							if len(result.Errors) > 0 {
+								return api.OnStartResult{Errors: result.Errors}, nil
+							}
+							moduleID := resolvedModuleID(result)
+							resolved[sourceID] = moduleID
+							nextTargets[moduleID] = true
+						}
+						nextByFile[filepath.Clean(path)] = resolved
 					}
+					mockResolutionMu.Lock()
+					resolvedMocksByFile = nextByFile
+					mockedTargets = nextTargets
+					mockResolutionMu.Unlock()
+					return api.OnStartResult{}, nil
+				})
+				build.OnLoad(api.OnLoadOptions{Filter: `\.(?:[cm]?[jt]s|[jt]sx)$`, Namespace: "file"}, func(args api.OnLoadArgs) (api.OnLoadResult, error) {
 					source, readErr := os.ReadFile(args.Path)
 					if readErr != nil {
 						return api.OnLoadResult{}, readErr
 					}
-					transformed, transformErr := transformHoistedMocks(string(source))
+					cleanPath := filepath.Clean(args.Path)
+					mockResolutionMu.RLock()
+					entryMocks := resolvedMocksByFile[cleanPath]
+					targets := make(map[string]bool, len(mockedTargets))
+					for id := range mockedTargets {
+						targets[id] = true
+					}
+					mockResolutionMu.RUnlock()
+
+					original := string(source)
+					transformed := original
+					var transformErr error
+					if hoistedFiles[cleanPath] {
+						transformed, transformErr = transformHoistedMocksWithIDs(original, entryMocks)
+					} else if len(targets) > 0 {
+						imports, findErr := findStaticImports(original)
+						if findErr != nil {
+							return api.OnLoadResult{}, findErr
+						}
+						resolvedImports := make(map[string]string)
+						for _, item := range imports {
+							sourceID, sourceErr := staticImportSource(original[item.start:item.end])
+							if sourceErr != nil {
+								return api.OnLoadResult{}, sourceErr
+							}
+							result := build.Resolve(sourceID, api.ResolveOptions{
+								PluginName: "rush-hoisted-mocks",
+								Importer:   args.Path,
+								ResolveDir: filepath.Dir(args.Path),
+								Kind:       api.ResolveJSImportStatement,
+							})
+							if len(result.Errors) > 0 {
+								return api.OnLoadResult{Errors: result.Errors}, nil
+							}
+							moduleID := resolvedModuleID(result)
+							if targets[moduleID] {
+								resolvedImports[sourceID] = moduleID
+							}
+						}
+						transformed, transformErr = transformDependencyImports(original, resolvedImports)
+					}
 					if transformErr != nil {
 						return api.OnLoadResult{}, transformErr
+					}
+					if transformed == original {
+						return api.OnLoadResult{}, nil
 					}
 					loader := loaderForPath(args.Path)
 					return api.OnLoadResult{
@@ -176,7 +257,7 @@ func (b *Builder) BuildBatch(cwd string, names []string) ([]BuiltSuite, float64,
 			Outdir:              filepath.Join(cwd, ".rush-build"),
 			Bundle:              true,
 			Write:               false,
-			Format:              api.FormatIIFE,
+			Format:              api.FormatESModule,
 			Platform:            api.PlatformBrowser,
 			Target:              api.ES2022,
 			JSX:                 api.JSXAutomatic,
@@ -187,6 +268,8 @@ func (b *Builder) BuildBatch(cwd string, names []string) ([]BuiltSuite, float64,
 			NodePaths:           []string{filepath.Join(cwd, "node_modules")},
 			External:            []string{"util"},
 			Plugins:             []api.Plugin{entryPlugin, browserModulePlugin, hoistPlugin},
+			Banner:              map[string]string{"js": "globalThis.__rushRegistration = (async () => {"},
+			Footer:              map[string]string{"js": "})();"},
 			Define: map[string]string{
 				"process.env.NODE_ENV": strconv.Quote(nodeEnvironment),
 			},
@@ -244,6 +327,14 @@ func (b *Builder) BuildBatch(cwd string, names []string) ([]BuiltSuite, float64,
 	cached.outputs = outputs
 	b.setLastWatchFiles(inputs)
 	return append([]BuiltSuite(nil), outputs...), elapsed, nil
+}
+
+func resolvedModuleID(result api.ResolveResult) string {
+	namespace := result.Namespace
+	if namespace == "" {
+		namespace = "file"
+	}
+	return "rush-module:" + namespace + ":" + filepath.ToSlash(result.Path) + result.Suffix
 }
 
 func (b *Builder) WatchFiles() []string {

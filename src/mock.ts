@@ -162,7 +162,8 @@ function requireClock(): Clock {
   return clock;
 }
 
-type MockFactory = (() => Awaitable<Record<string, unknown>>) | Record<string, unknown> | undefined;
+type ImportOriginal = <T extends Record<string, unknown> = Record<string, unknown>>() => Promise<T>;
+type MockFactory = ((importOriginal: ImportOriginal) => Awaitable<Record<string, unknown>>) | Record<string, unknown> | undefined;
 interface ModuleMock {
   factory: MockFactory;
   loaded?: Promise<Record<string, unknown>>;
@@ -185,7 +186,8 @@ export async function importWithMocks<T extends Record<string, unknown>>(id: str
       const actual = await importer();
       return Object.fromEntries(Object.entries(actual).map(([key, value]) => [key, typeof value === "function" ? fn() : value]));
     }
-    return typeof registration.factory === "function" ? registration.factory() : registration.factory;
+    const importOriginal = (() => importer()) as unknown as ImportOriginal;
+    return typeof registration.factory === "function" ? registration.factory(importOriginal) : registration.factory;
   })();
   return await registration.loaded as T;
 }

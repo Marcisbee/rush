@@ -2,6 +2,7 @@ package rush
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -92,6 +93,66 @@ func TestBuilderBatchesSuitesAndCachesUnchangedDependencyGraph(t *testing.T) {
 	}
 	if rebuiltMS <= 0 || rebuilt[0].Hash == initial[0].Hash || !strings.Contains(rebuilt[0].Source, "after dependency edit") {
 		t.Fatalf("dependency edit did not invalidate the batch: build=%f", rebuiltMS)
+	}
+}
+
+func TestBuilderAppliesAsyncMocksToDependenciesImportedBySubject(t *testing.T) {
+	t.Setenv("RUSH_BROWSER_MODULE", "")
+	directory := t.TempDir()
+	service := filepath.Join(directory, "service.ts")
+	subjectDirectory := filepath.Join(directory, "subject")
+	if err := os.Mkdir(subjectDirectory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	subject := filepath.Join(subjectDirectory, "index.ts")
+	suite := filepath.Join(directory, "subject.test.ts")
+	if err := os.WriteFile(service, []byte(`export const read = () => "real";`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(subject, []byte(`import { read } from "../service"; export const load = () => read();`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(suite, []byte(`
+import { vi } from "rush-webtest";
+import { load } from "./subject/index";
+vi.mock("./service", async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, read: () => "mocked:" + actual.read() };
+});
+globalThis.__rushDependencyMockResult = load();
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	builder := NewBuilder()
+	defer builder.Close()
+	bundle, _, err := builder.Build(directory, suite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := `
+const mocks = new Map();
+globalThis.__rushBrowserRuntime = {
+  vi: {},
+  __rushRegisterMock__(id, factory) { mocks.set(id, factory); },
+  async __rushImport__(id, importer) {
+    const factory = mocks.get(id);
+    return factory ? factory(importer) : importer();
+  },
+};
+`
+	script := filepath.Join(directory, "execute.mjs")
+	if err := os.WriteFile(script, []byte(runtime+bundle+`
+await globalThis.__rushRegistration;
+if (globalThis.__rushDependencyMockResult !== "mocked:real") {
+  throw new Error("dependency mock result: " + globalThis.__rushDependencyMockResult);
+}
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	output, err := exec.Command("node", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("execute bundle: %v\n%s", err, output)
 	}
 }
 
