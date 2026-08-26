@@ -111,7 +111,19 @@ void rush_wk_run(rush_wk_view *view) {
 
 void rush_wk_terminate(rush_wk_view *view) {
   (void)view;
-  rush_on_main(^{ [NSApp stop:nil]; });
+  rush_on_main(^{
+    [NSApp stop:nil];
+    NSEvent *wake = [NSEvent otherEventWithType:NSEventTypeApplicationDefined
+                                        location:NSZeroPoint
+                                   modifierFlags:0
+                                       timestamp:0
+                                    windowNumber:0
+                                         context:nil
+                                         subtype:0
+                                           data1:0
+                                           data2:0];
+    [NSApp postEvent:wake atStart:NO];
+  });
 }
 
 void rush_wk_destroy(rush_wk_view *view) {

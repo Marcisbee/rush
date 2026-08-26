@@ -50,7 +50,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - name: Run Objective-C adapter and Go host tests
-        run: go test ./...
+        run: go test -v -timeout 60s ./...
       - name: Build the normal Rush executable
         run: go build -o bin/rush ./cmd/rush
       - name: Verify system-framework-only native linkage
