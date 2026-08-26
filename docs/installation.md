@@ -108,6 +108,7 @@ For local development against an unpublished browser API build, set `RUSH_BROWSE
 | `RUSH_BROWSER_MODULE` | Absolute path to a locally built browser API override | Native binary's embedded runtime |
 | `RUSH_JSX_IMPORT_SOURCE` | Overrides automatic JSX runtime selection | React if declared, otherwise Preact if it alone is declared, otherwise React |
 | `RUSH_NODE_ENV` | Compile-time value of `process.env.NODE_ENV` in suites | `test` |
+| `VITE_*` | Public string values compiled into `import.meta.env` | Unset |
 | `RUSH_WEBVIEW_POOL_SIZE` | Explicit number of reusable Linux or macOS browser realms, from one through four | Up to three hidden, capped by file count; one headed |
 | `DISPLAY` / `WAYLAND_DISPLAY` | Select the existing desktop for `--headed` | Rush-managed Xvfb in headless Linux mode |
 

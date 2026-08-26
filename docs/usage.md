@@ -5,7 +5,7 @@
 The source-built Linux proof accepts these commands:
 
 ```text
-rush test [--watch] [--headed] [--verbose] [--json] [--timeout DURATION] FILE...
+rush test [--watch] [--headed] [--verbose] [--json] [--timeout DURATION] [--alias MODULE=PATH] [--loader EXTENSION=LOADER] FILE...
 rush bench [--repeat N] [--cold-repeat N] [--json]
 rush doctor
 ```
@@ -19,6 +19,7 @@ Examples:
 ./bin/rush test --timeout 45s --headed examples/react.test.tsx
 ./bin/rush test --verbose examples/browser-api.test.ts
 ./bin/rush test --watch examples/react.test.tsx
+./bin/rush test --alias virtual:pwa-register=./examples/virtual-pwa-register.ts --loader .md=text examples/vite-consumer.test.ts
 ```
 
 `test` expands shell-style file globs, removes duplicate paths, and rejects directories. The timeout applies separately to each suite. Normal output groups tests by file, shows each status and duration, indents failure details, and ends with pass/fail counts plus total runtime. Interactive terminals use color and status symbols; redirected and CI output uses portable ASCII markers. `--verbose` adds per-file build, runner, application, network, wait, and page timings plus startup and request timing. `--json` emits the unchanged native response instead. Every one-shot invocation owns and cleans up its native browser host before exiting.
@@ -28,6 +29,14 @@ An individual test duration covers its hooks and callback after the requested br
 `--watch` keeps that command's browser pool and incremental esbuild context warm, watches the input files reported by esbuild, and reruns the selected suites after a dependency changes. Test failures are reported without ending the watch loop. Press `Ctrl+C` to stop and clean up the host. `--json` and `--watch` are intentionally mutually exclusive because watch produces multiple results.
 
 `doctor` validates the selected WebView backend.
+
+## Vite consumer modules and assets
+
+Rush directly bundles Vite's common image, font, and media asset extensions as data URLs. JavaScript and TypeScript CSS imports produce one stylesheet for each suite. Rush injects that stylesheet into the suite page before tests execute, removes it during the normal realm reset, and enables the `style` package-export condition so CSS-only packages resolve to their browser stylesheets. CSS `url()` assets use the same embedded loaders.
+
+Virtual modules and project-specific asset behavior remain explicit consumer choices. Repeat `--alias module=path` to map a module identifier to a browser-safe file resolved from the project directory. Repeat `--loader extension=loader` to override an extension with `text`, `dataurl`, `base64`, `binary`, `empty`, `json`, `js`, `jsx`, `ts`, `tsx`, or `css`. The `file` and `copy` loaders are intentionally unavailable because Rush executes in-memory bundles and does not expose emitted asset files through a public URL.
+
+Rush defines `import.meta.env.MODE`, `BASE_URL`, `PROD`, `DEV`, and `SSR` for its browser bundles. `MODE` follows `RUSH_NODE_ENV`, which defaults to `test`, `BASE_URL` is `/`, and `SSR` is false. Exported environment variables whose names begin with `VITE_` are included as strings, matching Vite's public-client convention. Rush does not execute a consumer's Vite plugins; aliases and loaders provide the bounded compatibility seam for plugin-generated imports.
 
 The packages under `command`, `app`, `watch`, `reporter`, `artifact`, and `execution` define a broader host integration surface. Debug, reporter, build-plugin, and artifact options remain tested contracts that `cmd/rush` does not accept yet. Do not add those flags to consumer scripts until the native CLI integration lands.
 
