@@ -25,7 +25,7 @@ type benchmarkResult struct {
 	Measurement  string             `json:"measurement"`
 }
 
-func runBenchmarks(args []string, output io.Writer) error {
+func runBenchmarks(args []string, output io.Writer) (runErr error) {
 	set := flag.NewFlagSet("bench", flag.ContinueOnError)
 	repeat := set.Int("repeat", 5, "measured repetitions per warm scenario")
 	coldRepeat := set.Int("cold-repeat", 3, "measured cold starts")
@@ -44,17 +44,27 @@ func runBenchmarks(args []string, output io.Writer) error {
 	results := make([]benchmarkResult, 0, 6)
 	coldSamples := make([]float64, 0, *coldRepeat)
 	for i := 0; i < *coldRepeat; i++ {
-		if err := rush.Stop(false); err != nil {
-			return err
-		}
-		response, err := benchmarkRun(root, "benchmarks/fixtures/smoke.ts")
+		host, err := rush.StartHost(false, 1)
 		if err != nil {
 			return err
+		}
+		response, runErr := benchmarkRun(host, root, "benchmarks/fixtures/smoke.ts")
+		closeErr := host.Close()
+		if runErr != nil {
+			return runErr
+		}
+		if closeErr != nil {
+			return closeErr
 		}
 		coldSamples = append(coldSamples, response.StartupMS)
 	}
 	coldMedian := median(coldSamples)
-	results = append(results, benchmarkResult{Name: "cold startup", Metric: "daemon-to-page-ready", TargetMS: 2000, SamplesMS: coldSamples, MedianMS: coldMedian, Passed: coldMedian < 2000, Measurement: "native process start through " + rush.BackendName() + " bridge readiness; excludes build and user test time"})
+	results = append(results, benchmarkResult{Name: "cold startup", Metric: "host-to-page-ready", TargetMS: 2000, SamplesMS: coldSamples, MedianMS: coldMedian, Passed: coldMedian < 2000, Measurement: "native process start through " + rush.BackendName() + " bridge readiness; excludes build and user test time"})
+	warmHost, err := rush.StartHost(false, 1)
+	if err != nil {
+		return err
+	}
+	defer func() { runErr = errors.Join(runErr, warmHost.Close()) }()
 
 	scenarios := []struct {
 		name, file, metric string
@@ -67,13 +77,13 @@ func runBenchmarks(args []string, output io.Writer) error {
 		{"100-test warm", "benchmarks/fixtures/hundred.ts", "page-total", 1000, 100},
 	}
 	for _, scenario := range scenarios {
-		if _, err := benchmarkRun(root, scenario.file); err != nil { // warm browser and esbuild graph
+		if _, err := benchmarkRun(warmHost, root, scenario.file); err != nil { // warm browser and esbuild graph
 			return err
 		}
 		samples := make([]float64, 0, *repeat)
 		phases := newPhaseSamples()
 		for i := 0; i < *repeat; i++ {
-			response, err := benchmarkRun(root, scenario.file)
+			response, err := benchmarkRun(warmHost, root, scenario.file)
 			if err != nil {
 				return err
 			}
@@ -88,7 +98,7 @@ func runBenchmarks(args []string, output io.Writer) error {
 		results = append(results, benchmarkResult{Name: scenario.name, Metric: scenario.metric, TargetMS: scenario.target, SamplesMS: samples, MedianMS: value, Passed: value < scenario.target, TestCount: scenario.count, PhaseMedians: phases.medians(), Measurement: "WebKit performance.now() around registration and test execution; build excluded from the target metric"})
 	}
 
-	rebuild, err := benchmarkRebuild(root, *repeat)
+	rebuild, err := benchmarkRebuild(warmHost, root, *repeat)
 	if err != nil {
 		return err
 	}
@@ -123,11 +133,11 @@ func runBenchmarks(args []string, output io.Writer) error {
 	return nil
 }
 
-func benchmarkRun(root, file string) (rush.Response, error) {
-	return rush.Send(rush.Request{Action: "run", CWD: root, Files: []string{file}, Timeout: (30 * time.Second).Milliseconds()}, false)
+func benchmarkRun(host *rush.Host, root, file string) (rush.Response, error) {
+	return host.Send(rush.Request{Action: "run", CWD: root, Files: []string{file}, Timeout: (30 * time.Second).Milliseconds()})
 }
 
-func benchmarkRebuild(root string, repeat int) (benchmarkResult, error) {
+func benchmarkRebuild(host *rush.Host, root string, repeat int) (benchmarkResult, error) {
 	temp, err := os.MkdirTemp(root, ".rush-rebuild-")
 	if err != nil {
 		return benchmarkResult{}, err
@@ -141,7 +151,7 @@ func benchmarkRebuild(root string, repeat int) (benchmarkResult, error) {
 	if err := write(0); err != nil {
 		return benchmarkResult{}, err
 	}
-	if _, err := rush.Send(rush.Request{Action: "run", CWD: root, Files: []string{entry}}, false); err != nil {
+	if _, err := host.Send(rush.Request{Action: "run", CWD: root, Files: []string{entry}}); err != nil {
 		return benchmarkResult{}, err
 	}
 	samples := make([]float64, 0, repeat)
@@ -150,7 +160,7 @@ func benchmarkRebuild(root string, repeat int) (benchmarkResult, error) {
 		if err := write(i); err != nil {
 			return benchmarkResult{}, err
 		}
-		response, err := rush.Send(rush.Request{Action: "run", CWD: root, Files: []string{entry}}, false)
+		response, err := host.Send(rush.Request{Action: "run", CWD: root, Files: []string{entry}})
 		if err != nil {
 			return benchmarkResult{}, err
 		}

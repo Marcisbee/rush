@@ -3,32 +3,37 @@ package rush
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
-func TestSocketPathScopesDaemonToExecutableAndMode(t *testing.T) {
-	cache := t.TempDir()
-	t.Setenv("XDG_CACHE_HOME", cache)
+func TestHostDirectoriesArePrivateAndCommandScoped(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	cache, err := os.UserCacheDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	headless, err := SocketPath(false)
+	first, err := createHostDirectory()
 	if err != nil {
 		t.Fatal(err)
 	}
-	headed, err := SocketPath(true)
+	defer os.RemoveAll(first)
+	second, err := createHostDirectory()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if filepath.Dir(headless) != filepath.Join(cache, "rush") {
-		t.Fatalf("socket directory = %q", filepath.Dir(headless))
+	defer os.RemoveAll(second)
+	if first == second {
+		t.Fatalf("host directory was reused: %s", first)
 	}
-	if !strings.HasSuffix(headless, "-"+backendSocketMode(false)+".sock") || !strings.HasSuffix(headed, "-"+backendSocketMode(true)+".sock") {
-		t.Fatalf("unexpected socket modes: %q %q", headless, headed)
+	wantParent := filepath.Join(cache, "rush")
+	if filepath.Dir(first) != wantParent || filepath.Dir(second) != wantParent {
+		t.Fatalf("host directories = %q and %q; want parent %q", first, second, wantParent)
 	}
-	if headless == headed || !strings.HasPrefix(filepath.Base(headless), "daemon-") {
-		t.Fatalf("socket identity is not scoped: %q %q", headless, headed)
+	info, err := os.Stat(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm()&0077 != 0 {
+		t.Fatalf("host directory permissions = %o", info.Mode().Perm())
 	}
 }

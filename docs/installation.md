@@ -43,9 +43,9 @@ Fedora:
 sudo dnf install webkit2gtk4.1 gtk3 libXtst xorg-x11-server-Xvfb xorg-x11-xauth
 ```
 
-Headless mode starts an authenticated Xvfb display and keeps it with the warm daemon. In a WSL or container environment where `/tmp/.X11-unix` cannot safely host a local socket, Rush uses a loopback TCP display protected by a generated Xauthority cookie.
+Headless mode starts an authenticated Xvfb display for the current command and cleans it up on exit. In watch mode, the display remains warm until the foreground command is interrupted. In a WSL or container environment where `/tmp/.X11-unix` cannot safely host a local socket, Rush uses a loopback TCP display protected by a generated Xauthority cookie.
 
-Headed mode uses the current desktop and requires `DISPLAY` or `WAYLAND_DISPLAY`. It enables the WebView debug flag and uses a separate daemon from headless mode. Trusted input uses XTest on the selected X11 display and fails explicitly when `libXtst` or a usable display is unavailable.
+Headed mode uses the current desktop and requires `DISPLAY` or `WAYLAND_DISPLAY`. It enables the WebView debug flag. Trusted input uses XTest on the selected X11 display and fails explicitly when `libXtst` or a usable display is unavailable.
 
 ## Linux: optional WPE headless build
 
@@ -71,7 +71,6 @@ npm ci
 make build
 ./bin/rush doctor
 ./bin/rush test examples/basic.test.ts
-./bin/rush stop
 ```
 
 The build uses cgo to compile a thin Objective-C C-ABI shim directly into `bin/rush`. The resulting executable links Apple AppKit, WebKit, ApplicationServices, and CoreGraphics system frameworks. It does not extract a WebView dynamic library or start a Swift/helper adapter process.
@@ -98,25 +97,20 @@ Every test imports the working package name:
 import { expect, test } from "rush-webtest";
 ```
 
-The Linux builder resolves that import in this order:
+The npm package provides declarations for TypeScript and editors. Production native binaries embed the browser implementation built from the same release, so suite bundles reference one already-loaded runtime instead of copying Testing Library, fake timers, and Rush internals into every file.
 
-1. `RUSH_BROWSER_MODULE`.
-2. `<consumer>/node_modules/rush-webtest/dist/index.js`.
-3. `<consumer>/dist/index.js`.
-4. `dist/index.js` adjacent to the Rush binary's parent directory.
-
-For local development against an unpublished browser API build, set an absolute `RUSH_BROWSER_MODULE` path instead of relying on a global symlink.
+For local development against an unpublished browser API build, set `RUSH_BROWSER_MODULE` to its absolute `dist/index.js` path. That explicit override is bundled with the suite.
 
 ## Environment configuration
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `RUSH_BROWSER_MODULE` | Absolute path to a locally built browser API | Resolver search above |
+| `RUSH_BROWSER_MODULE` | Absolute path to a locally built browser API override | Native binary's embedded runtime |
 | `RUSH_JSX_IMPORT_SOURCE` | Overrides automatic JSX runtime selection | React if declared, otherwise Preact if it alone is declared, otherwise React |
 | `RUSH_NODE_ENV` | Compile-time value of `process.env.NODE_ENV` in suites | `test` |
-| `RUSH_WEBVIEW_POOL_SIZE` | Number of reusable Linux or macOS browser realms, from one through four | Up to three hidden; one headed |
+| `RUSH_WEBVIEW_POOL_SIZE` | Explicit number of reusable Linux or macOS browser realms, from one through four | Up to three hidden, capped by file count; one headed |
 | `DISPLAY` / `WAYLAND_DISPLAY` | Select the existing desktop for `--headed` | Rush-managed Xvfb in headless Linux mode |
 
-`RUSH_READY_FD` is an internal daemon handshake and is not user configuration.
+`RUSH_READY_FD` and `RUSH_LIFETIME_FD` are internal host lifecycle channels and are not user configuration.
 
-Changing the JSX import source or Node environment creates a distinct incremental build context. Stop the daemon after changing toolchain revisions or local package paths so the next run starts with an unambiguous process and module graph.
+Changing the JSX import source or Node environment creates a distinct incremental build context during watch mode. A new invocation always starts with the current executable, environment, and local package paths.

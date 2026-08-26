@@ -4,6 +4,7 @@ NPM ?= npm
 
 build:
 	$(NPM) run build
+	go generate ./internal/rush
 	mkdir -p bin
 	go build -o bin/rush ./cmd/rush
 
@@ -20,13 +21,10 @@ test-static: build
 	go test -race ./...
 
 test-browser: build
-	@set -e; trap './bin/rush stop >/dev/null 2>&1 || true' EXIT; \
-		./bin/rush test test/*.test.ts
+	./bin/rush test test/*.test.ts
 
 bench: build
 	./bin/rush bench
 
 clean:
-	-@if [ -x bin/wpe/rush ]; then bin/wpe/rush stop; fi
-	-go run ./cmd/rush stop
 	rm -rf bin

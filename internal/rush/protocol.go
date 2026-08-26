@@ -3,10 +3,13 @@ package rush
 import "time"
 
 type Request struct {
-	Action  string   `json:"action"`
-	CWD     string   `json:"cwd,omitempty"`
-	Files   []string `json:"files,omitempty"`
-	Timeout int64    `json:"timeout_ms,omitempty"`
+	Action     string       `json:"action"`
+	CWD        string       `json:"cwd,omitempty"`
+	Files      []string     `json:"files,omitempty"`
+	Bundles    []BuiltSuite `json:"bundles,omitempty"`
+	BuildMS    float64      `json:"build_ms,omitempty"`
+	WatchFiles []string     `json:"watch_files,omitempty"`
+	Timeout    int64        `json:"timeout_ms,omitempty"`
 }
 
 type Timing struct {
@@ -32,10 +35,11 @@ type Profile struct {
 }
 
 type TestResult struct {
-	Name     string  `json:"name"`
-	Status   string  `json:"status"`
-	Duration float64 `json:"duration_ms"`
-	Error    string  `json:"error,omitempty"`
+	Name       string  `json:"name"`
+	Status     string  `json:"status"`
+	Duration   float64 `json:"duration_ms"`
+	Error      string  `json:"error,omitempty"`
+	SkipReason string  `json:"skip_reason,omitempty"`
 }
 
 type SuiteResult struct {
@@ -45,12 +49,13 @@ type SuiteResult struct {
 }
 
 type Response struct {
-	Error     string        `json:"error,omitempty"`
-	Cold      bool          `json:"cold"`
-	StartupMS float64       `json:"startup_ms"`
-	WallMS    float64       `json:"wall_ms"`
-	Profile   Profile       `json:"profile"`
-	Suites    []SuiteResult `json:"suites,omitempty"`
+	Error      string        `json:"error,omitempty"`
+	Cold       bool          `json:"cold"`
+	StartupMS  float64       `json:"startup_ms"`
+	WallMS     float64       `json:"wall_ms"`
+	Profile    Profile       `json:"profile"`
+	Suites     []SuiteResult `json:"suites,omitempty"`
+	WatchFiles []string      `json:"watch_files,omitempty"`
 }
 
 func milliseconds(d time.Duration) float64 {

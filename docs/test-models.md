@@ -1,6 +1,6 @@
 # Test models and trusted automation
 
-Rush separates three test models because they need different isolation and browser control. Choosing the smallest sufficient model keeps tests fast and makes unavailable native capabilities fail explicitly.
+Rush separates three test models because they need different isolation and browser control. Choosing the smallest sufficient model keeps tests fast and makes unavailable native capabilities explicit.
 
 | Model | Use for | Isolation boundary | Native adapter required |
 | --- | --- | --- | --- |
@@ -8,7 +8,7 @@ Rush separates three test models because they need different isolation and brows
 | App | Real navigation, HTTP, origin storage, service workers, application flows | Application realm and origin state per test | Yes |
 | Session | Realtime or multi-user behavior with independent clients | Named browser realm/profile per client | Yes |
 
-All three models execute through the Linux WebKitGTK CLI on this revision. App and session tests use coarse native capabilities and keep DOM work inside their browser pages. A missing native capability throws instead of silently falling back to weaker browser-only behavior.
+All three models execute through the Linux WebKitGTK CLI on this revision. App and session tests use coarse native capabilities and keep DOM work inside their browser pages. A missing trusted-input capability skips only the test that requests it instead of silently falling back to weaker browser-only behavior.
 
 ## Browser tests
 
@@ -106,7 +106,7 @@ Platform requirements differ:
 - Windows uses `SendInput`, requires an interactive desktop, and cannot run from session-0 services.
 - WPE's headless backend has no trusted desktop-input path.
 
-Rush never turns a synthetic interaction into a claimed trusted event. If a native adapter is not configured, trusted calls fail with a capability error.
+Rush never turns a synthetic interaction into a claimed trusted event. If trusted input is unavailable on the active backend, calling the explicit native API skips that test. Once a backend advertises trusted input, permission, focus, targeting, and delivery errors remain test failures.
 
 ## Cleanup expectations
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"runtime"
 	"sync"
 	"time"
 
@@ -38,6 +39,11 @@ type browserBatchResult struct {
 	ReportingMS    float64       `json:"reporting_ms"`
 }
 
+type nativeInputCapability struct {
+	Available bool   `json:"available"`
+	Reason    string `json:"reason,omitempty"`
+}
+
 const browserControllerPath = "/__rush/controller"
 
 func NewBrowser(headed bool) (*Browser, error) {
@@ -51,7 +57,7 @@ func NewBrowser(headed bool) (*Browser, error) {
 	mux.HandleFunc(browserControllerPath, func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Cache-Control", "no-store")
 		response.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = response.Write([]byte(runtimeHTML))
+		_, _ = response.Write([]byte(browserControllerHTML))
 	})
 	mux.HandleFunc("/__rush/timing", func(response http.ResponseWriter, request *http.Request) {
 		time.Sleep(10 * time.Millisecond)
@@ -139,10 +145,27 @@ func NewBrowser(headed bool) (*Browser, error) {
 		view.Destroy()
 		return nil, fmt.Errorf("bind native input bridge: %w", err)
 	}
+	if err := view.Bind("__rushPrepareNativeInput", func() nativeInputCapability {
+		return resolveNativeInputCapability(headed, browser.nativeInputErr)
+	}); err != nil {
+		browser.sessions.Close()
+		view.Destroy()
+		return nil, fmt.Errorf("bind native input readiness bridge: %w", err)
+	}
 	view.SetTitle("Rush — " + BackendName())
 	view.SetSize(1280, 800, webview.HintNone)
 	view.Navigate(origin + browserControllerPath)
 	return browser, nil
+}
+
+func resolveNativeInputCapability(headed bool, inputErr error) nativeInputCapability {
+	if inputErr != nil {
+		return nativeInputCapability{Reason: inputErr.Error()}
+	}
+	if runtime.GOOS == "darwin" && !headed {
+		return nativeInputCapability{Reason: "trusted native input requires --headed on macOS"}
+	}
+	return nativeInputCapability{Available: true}
 }
 
 func (b *Browser) Ready() <-chan struct{} { return b.ready }

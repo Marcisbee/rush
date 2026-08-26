@@ -5,10 +5,9 @@
 The source-built Linux proof accepts these commands:
 
 ```text
-rush test [--headed] [--json] [--timeout DURATION] FILE...
+rush test [--watch] [--headed] [--verbose] [--json] [--timeout DURATION] FILE...
 rush bench [--repeat N] [--cold-repeat N] [--json]
 rush doctor
-rush stop [--headed]
 ```
 
 Examples:
@@ -18,14 +17,17 @@ Examples:
 ./bin/rush test examples/browser-api.test.ts examples/javascript.test.js
 ./bin/rush test --json 'examples/*.test.ts'
 ./bin/rush test --timeout 45s --headed examples/react.test.tsx
-./bin/rush stop
+./bin/rush test --verbose examples/browser-api.test.ts
+./bin/rush test --watch examples/react.test.tsx
 ```
 
-`test` expands shell-style file globs, removes duplicate paths, and rejects directories. The timeout applies separately to each suite. Normal output lists failures, per-suite timing phases, result counts, request wall time, and cold startup when the command started the browser. `--json` emits the native response instead.
+`test` expands shell-style file globs, removes duplicate paths, and rejects directories. The timeout applies separately to each suite. Normal output groups tests by file, shows each status and duration, indents failure details, and ends with pass/fail counts plus total runtime. Interactive terminals use color and status symbols; redirected and CI output uses portable ASCII markers. `--verbose` adds per-file build, runner, application, network, wait, and page timings plus startup and request timing. `--json` emits the unchanged native response instead. Every one-shot invocation owns and cleans up its native browser host before exiting.
 
-`doctor` validates the selected WebView backend. `stop` stops the headless daemon; `stop --headed` stops the separate debug daemon.
+`--watch` keeps that command's browser pool and incremental esbuild context warm, watches the input files reported by esbuild, and reruns the selected suites after a dependency changes. Test failures are reported without ending the watch loop. Press `Ctrl+C` to stop and clean up the host. `--json` and `--watch` are intentionally mutually exclusive because watch produces multiple results.
 
-The packages under `command`, `app`, `watch`, `reporter`, `artifact`, and `execution` define a broader host integration surface. Their `run`, `watch`, `debug`, reporter, build-plugin, and artifact options are tested contracts, but `cmd/rush` does not accept them yet. Do not add those flags to consumer scripts until the native CLI integration lands.
+`doctor` validates the selected WebView backend.
+
+The packages under `command`, `app`, `watch`, `reporter`, `artifact`, and `execution` define a broader host integration surface. Debug, reporter, build-plugin, and artifact options remain tested contracts that `cmd/rush` does not accept yet. Do not add those flags to consumer scripts until the native CLI integration lands.
 
 ## Registering tests
 
@@ -92,7 +94,7 @@ test("submits locally", ({ page }) => {
 });
 ```
 
-Synthetic calls are intentionally fast and remain inside the page. They do not claim `Event.isTrusted === true`. Use the explicit native path only for behavior that truly depends on operating-system input.
+Synthetic calls are intentionally fast and remain inside the page. They do not claim `Event.isTrusted === true`. Use the explicit native path only for behavior that truly depends on operating-system input. When the current backend cannot provide trusted input, a test that calls the native API is reported as skipped; permission, focus, and input-delivery errors on a supported backend still fail the test.
 
 ## Isolation and timing
 
@@ -100,7 +102,7 @@ Linux assigns files deterministically across a bounded warm WebView pool. Before
 
 The native response reports:
 
-- `build`: host-side incremental esbuild work.
+- `build`: CLI-side incremental esbuild work, overlapped with cold browser startup on the initial run.
 - `runner`: page registration and orchestration outside hooks and test callbacks.
 - `application`: callback wall time after observed network duration and completed requested timer delays are subtracted.
 - `network`: WebKit resource-timing duration observed during the suite.

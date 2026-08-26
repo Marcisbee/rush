@@ -34,7 +34,13 @@ type BrowserPool struct {
 	ready  chan struct{}
 }
 
-func configuredBrowserPoolSize(headed bool, value string) (int, error) {
+func configuredBrowserPoolSize(headed bool, value string, suiteCount ...int) (int, error) {
+	capToSuites := func(size int) int {
+		if len(suiteCount) > 0 && suiteCount[0] > 0 {
+			return min(size, suiteCount[0])
+		}
+		return size
+	}
 	if headed && value == "" {
 		return 1, nil
 	}
@@ -43,10 +49,11 @@ func configuredBrowserPoolSize(headed bool, value string) (int, error) {
 		if err != nil || size < 1 || size > maxBrowserPoolSize {
 			return 0, fmt.Errorf("RUSH_WEBVIEW_POOL_SIZE must be between 1 and %d", maxBrowserPoolSize)
 		}
-		return size, nil
+		return capToSuites(size), nil
 	}
 	size := min(defaultBrowserPoolSize, runtime.GOMAXPROCS(0))
-	return max(1, size), nil
+	size = max(1, size)
+	return capToSuites(size), nil
 }
 
 func NewBrowserPool(headed bool, size int) (*BrowserPool, error) {

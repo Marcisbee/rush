@@ -1,5 +1,14 @@
 package rush
 
+import "strings"
+
+var browserControllerHTML = strings.Replace(
+	runtimeHTML,
+	"<script>",
+	"<script>"+string(browserRuntimeJS)+"</script><script>",
+	1,
+)
+
 const runtimeHTML = `<!doctype html>
 <html><head><meta charset="utf-8"><title>Rush</title></head><body><script>
 (() => {
@@ -157,7 +166,16 @@ const runtimeHTML = `<!doctype html>
   }
 
   function makeNativeAutomation() {
+    let readiness;
+    const prepare = () => readiness ||= (async () => {
+      const capability = await window.__rushPrepareNativeInput();
+      if (capability?.available) return;
+      const error = new Error(capability?.reason || "trusted native input is unavailable");
+      error.name = "RushUnsupportedCapabilityError";
+      throw error;
+    })();
     const send = async (action, element, extra = {}) => {
+      await prepare();
       const point = element ? await elementPoint(element) : {};
       await window.__rushNativeInput(JSON.stringify({action, ...point, ...extra}));
     };
@@ -384,11 +402,12 @@ const runtimeHTML = `<!doctype html>
     });
   }
 
-  function bundleFactory(hash, source) {
+  function bundleFactory(hash, source, file) {
     let factory = compiledBundles.get(hash);
     if (factory) return factory;
     if (!source) throw new Error("compiled bundle cache miss for " + hash);
-    factory = new Function(source);
+    const sourceURL = "rush-test://suite/" + encodeURIComponent(file).replaceAll("%2F", "/");
+    factory = new Function("//# sourceURL=" + sourceURL + "\n" + source);
     if (compiledBundles.size >= bundleCacheLimit) {
       compiledBundles.delete(compiledBundles.keys().next().value);
     }
@@ -406,15 +425,19 @@ const runtimeHTML = `<!doctype html>
     let compile = 0;
     collecting = true;
     try {
+      const sharedAPI = globalThis.__rushBrowserRuntime;
+      if (!sharedAPI || typeof sharedAPI.run !== "function") {
+        throw new Error("Rush browser runtime did not load");
+      }
+      sharedAPI.resetRegistry();
+      sharedAPI.resetMockRuntime();
+      sharedAPI.configureSnapshots();
       const compileStart = performance.now();
-      const factory = bundleFactory(bundle.hash, bundle.source);
+      const factory = bundleFactory(bundle.hash, bundle.source, bundle.file);
       compile = performance.now() - compileStart;
       factory();
       if (globalThis.__rushRegistration) await globalThis.__rushRegistration;
-      const api = globalThis.__rushBrowserModule;
-      if (!api || typeof api.run !== "function") {
-        throw new Error("suite bundle did not expose the rush-webtest runtime");
-      }
+      const api = globalThis.__rushBrowserModule || sharedAPI;
       api.configureRuntime({createApp: createAppRealm, createSession});
       const runResult = await api.run({emit: false});
       results = runResult.tests.map(item => ({
@@ -422,6 +445,7 @@ const runtimeHTML = `<!doctype html>
         status: item.state,
         duration_ms: item.durationMs,
         ...(item.error ? {error: formatError(item.error)} : {}),
+        ...(item.skipReason ? {skip_reason: item.skipReason} : {}),
       }));
       callbackWall = runResult.tests.reduce((sum, item) => sum + item.durationMs, 0);
     } catch (error) {

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -20,17 +21,24 @@ import (
 )
 
 type Server struct {
-	socket  string
-	browser *BrowserPool
-	builder *Builder
-	started time.Time
-	cold    atomic.Bool
-	runMu   sync.Mutex
-	nextID  atomic.Uint64
+	socket   string
+	browser  *BrowserPool
+	builder  *Builder
+	started  time.Time
+	cold     atomic.Bool
+	runMu    sync.Mutex
+	stopOnce sync.Once
+	nextID   atomic.Uint64
 }
 
-func RunDaemon(socket string, headed bool, ready *os.File) error {
+func RunHost(socket string, headed bool, suiteCount int, ready, lifetime *os.File) error {
 	started := time.Now()
+	if directory, ok := scopedHostDirectory(socket); ok {
+		defer os.RemoveAll(directory)
+	}
+	if lifetime != nil {
+		defer lifetime.Close()
+	}
 	stopDisplay, err := prepareBrowser(headed)
 	if err != nil {
 		writeReady(ready, err)
@@ -57,7 +65,7 @@ func RunDaemon(socket string, headed bool, ready *os.File) error {
 		return err
 	}
 
-	poolSize, err := configuredBrowserPoolSize(headed, os.Getenv("RUSH_WEBVIEW_POOL_SIZE"))
+	poolSize, err := configuredBrowserPoolSize(headed, os.Getenv("RUSH_WEBVIEW_POOL_SIZE"), suiteCount)
 	if err != nil {
 		writeReady(ready, err)
 		return err
@@ -71,6 +79,9 @@ func RunDaemon(socket string, headed bool, ready *os.File) error {
 	server := &Server{socket: socket, browser: browser, builder: NewBuilder(), started: started}
 	server.cold.Store(true)
 	defer server.builder.Close()
+	if lifetime != nil {
+		go stopWhenClosed(lifetime, server.stop)
+	}
 
 	go func() {
 		select {
@@ -85,11 +96,39 @@ func RunDaemon(socket string, headed bool, ready *os.File) error {
 			}
 		case <-time.After(15 * time.Second):
 			writeReady(ready, fmt.Errorf("%s page did not become ready within 15s", BackendName()))
-			browser.Stop()
+			server.stop()
 		}
 	}()
 	browser.RunLoop()
 	return nil
+}
+
+func (s *Server) stop() {
+	s.stopOnce.Do(s.browser.Stop)
+}
+
+func scopedHostDirectory(socket string) (string, bool) {
+	if filepath.Base(socket) != "host.sock" {
+		return "", false
+	}
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		return "", false
+	}
+	root, err := filepath.Abs(filepath.Join(cache, "rush"))
+	if err != nil {
+		return "", false
+	}
+	directory, err := filepath.Abs(filepath.Dir(socket))
+	if err != nil || filepath.Dir(directory) != root || !strings.HasPrefix(filepath.Base(directory), "host-") {
+		return "", false
+	}
+	return directory, true
+}
+
+func stopWhenClosed(lifetime io.Reader, stop func()) {
+	_, _ = io.Copy(io.Discard, lifetime)
+	stop()
 }
 
 func startVirtualDisplay() (func(), error) {
@@ -268,12 +307,12 @@ func (s *Server) handle(connection net.Conn) {
 		_ = encoder.Encode(Response{})
 		go func() {
 			time.Sleep(25 * time.Millisecond)
-			s.browser.Stop()
+			s.stop()
 		}()
 		return
 	}
 	if request.Action != "run" {
-		_ = encoder.Encode(Response{Error: "unknown daemon action: " + request.Action})
+		_ = encoder.Encode(Response{Error: "unknown host action: " + request.Action})
 		return
 	}
 
@@ -294,11 +333,17 @@ func (s *Server) run(request Request) Response {
 	if request.Timeout > 0 {
 		timeout = time.Duration(request.Timeout) * time.Millisecond
 	}
-	bundles, buildMS, err := s.builder.BuildBatch(request.CWD, request.Files)
-	if err != nil {
-		response.Error = err.Error()
-		response.WallMS = milliseconds(time.Since(started))
-		return response
+	bundles, buildMS := request.Bundles, request.BuildMS
+	response.WatchFiles = append([]string(nil), request.WatchFiles...)
+	if len(bundles) == 0 {
+		var err error
+		bundles, buildMS, err = s.builder.BuildBatch(request.CWD, request.Files)
+		response.WatchFiles = s.builder.WatchFiles()
+		if err != nil {
+			response.Error = err.Error()
+			response.WallMS = milliseconds(time.Since(started))
+			return response
+		}
 	}
 	response.Profile.BundleMS = buildMS
 	browserStarted := time.Now()

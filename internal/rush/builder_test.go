@@ -3,6 +3,7 @@ package rush
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -67,6 +68,12 @@ func TestBuilderBatchesSuitesAndCachesUnchangedDependencyGraph(t *testing.T) {
 	}
 	if len(initial) != 2 || initialMS <= 0 || !strings.Contains(initial[0].Source, "before") || !strings.Contains(initial[1].Source, "second") {
 		t.Fatalf("unexpected initial batch: count=%d build=%f", len(initial), initialMS)
+	}
+	watchFiles := builder.WatchFiles()
+	for _, path := range []string{dependency, first, second} {
+		if !slices.Contains(watchFiles, path) {
+			t.Fatalf("watch files %#v do not include %s", watchFiles, path)
+		}
 	}
 	cached, cachedMS, err := builder.BuildBatch(directory, []string{first, second})
 	if err != nil {
@@ -151,5 +158,26 @@ func TestBuilderResolvesBrowserModuleForExternalSuite(t *testing.T) {
 	}
 	if !strings.Contains(bundle, "external") {
 		t.Fatal("external suite was not included in bundle")
+	}
+}
+
+func TestBuilderKeepsSharedBrowserRuntimeOutOfSuiteBundles(t *testing.T) {
+	t.Setenv("RUSH_BROWSER_MODULE", "")
+	directory := t.TempDir()
+	suite := filepath.Join(directory, "small.test.ts")
+	if err := os.WriteFile(suite, []byte("import { expect, test } from 'rush-webtest'; test('small', () => expect(1).toBe(1))"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	builder := NewBuilder()
+	defer builder.Close()
+	bundle, _, err := builder.Build(directory, suite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bundle) > 50_000 {
+		t.Fatalf("suite bundle still contains shared browser runtime: %d bytes", len(bundle))
+	}
+	if strings.Contains(bundle, "TestingLibraryElementError") {
+		t.Fatal("suite bundle contains Testing Library implementation")
 	}
 }
