@@ -3,6 +3,11 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    "baseUrl": ".",
+    "paths": {
+      "@rush/browser": ["./src/index.ts"],
+      "@rush/browser/internal": ["./src/mock.ts"]
+    },
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
@@ -13,7 +18,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "dist",
-    "types": ["vitest/globals"]
+    "rootDir": "."
   },
-  "include": ["src", "test", "vitest.config.ts"]
+  "include": ["src", "test"]
 }

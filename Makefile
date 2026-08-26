@@ -1,7 +1,9 @@
-.PHONY: build build-wpe test bench clean
+.PHONY: build build-wpe test test-static test-browser bench clean
+
+NPM ?= npm
 
 build:
-	npm run build
+	$(NPM) run build
 	mkdir -p bin
 	go build -o bin/rush ./cmd/rush
 
@@ -11,8 +13,15 @@ build-wpe:
 	$(CC) -shared -fPIC -O2 -o bin/wpe/libwebview.so native/wpe/webview.c $$(pkg-config --cflags --libs wpe-webkit-2.0 wpe-platform-headless-2.0)
 	go build -tags rush_wpe -o bin/wpe/rush ./cmd/rush
 
-test:
-	go test ./...
+test: test-static test-browser
+
+test-static: build
+	$(NPM) run check
+	go test -race ./...
+
+test-browser: build
+	@set -e; trap './bin/rush stop >/dev/null 2>&1 || true' EXIT; \
+		./bin/rush test test/*.test.ts
 
 bench: build
 	./bin/rush bench

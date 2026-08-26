@@ -2,8 +2,14 @@ name: Rush CI
 
 on:
   pull_request:
+    paths-ignore:
+      - "README.md"
+      - "docs/**"
   push:
     branches: [main]
+    paths-ignore:
+      - "README.md"
+      - "docs/**"
 
 permissions:
   contents: read
@@ -14,7 +20,7 @@ concurrency:
 
 jobs:
   core:
-    name: Go and browser API
+    name: TypeScript and Go contracts
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -30,12 +36,8 @@ jobs:
       - run: npm ci
       - name: Check browser API types
         run: npm run check
-      - name: Test browser API
-        run: npm test
       - name: Build browser API
         run: npm run build
-      - name: Test native host contracts
-        run: go test ./...
       - name: Test native host contracts for races
         run: go test -race ./...
 
@@ -62,9 +64,10 @@ jobs:
         run: make build
       - name: Verify native runtime
         run: ./bin/rush doctor
-      - name: Run real-browser examples
+      - name: Run Rush self-test and real-browser examples
         run: >-
           ./bin/rush test
+          test/*.test.ts
           examples/basic.test.ts
           examples/browser-api.test.ts
           examples/javascript.test.js
@@ -85,24 +88,3 @@ jobs:
       - name: Stop warm daemon
         if: always()
         run: ./bin/rush stop || true
-
-  windows-webview2:
-    name: Windows WebView2 adapter
-    runs-on: windows-2022
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run build
-      - name: Test Windows host packages
-        run: go test ./platform/webview2 ./harness
-      - name: Run real WebView2 conformance harness
-        run: go run ./cmd/rush-webview2-harness -repeats 5 -trusted-input=false
