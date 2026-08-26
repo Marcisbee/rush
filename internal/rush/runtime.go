@@ -166,7 +166,10 @@ const runtimeHTML = `<!doctype html>
   }
 
   function makeNativeAutomation() {
+    let readiness;
+    const prepare = () => readiness ||= window.__rushPrepareNativeInput();
     const send = async (action, element, extra = {}) => {
+      await prepare();
       const point = element ? await elementPoint(element) : {};
       await window.__rushNativeInput(JSON.stringify({action, ...point, ...extra}));
     };

@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"runtime"
 	"sync"
 	"time"
 
@@ -138,6 +140,19 @@ func NewBrowser(headed bool) (*Browser, error) {
 		browser.sessions.Close()
 		view.Destroy()
 		return nil, fmt.Errorf("bind native input bridge: %w", err)
+	}
+	if err := view.Bind("__rushPrepareNativeInput", func() error {
+		if browser.nativeInputErr != nil {
+			return browser.nativeInputErr
+		}
+		if runtime.GOOS == "darwin" && !headed {
+			return errors.New("trusted native input requires --headed on macOS")
+		}
+		return nil
+	}); err != nil {
+		browser.sessions.Close()
+		view.Destroy()
+		return nil, fmt.Errorf("bind native input readiness bridge: %w", err)
 	}
 	view.SetTitle("Rush — " + BackendName())
 	view.SetSize(1280, 800, webview.HintNone)
