@@ -39,6 +39,7 @@
     "build": "tsc -p tsconfig.build.json",
     "bench": "./bin/rush bench",
     "check": "tsc -p tsconfig.json --noEmit",
+    "check:release": "node --test .github/scripts/*.test.mjs",
     "prepack": "tsc -p tsconfig.build.json",
     "test": "make test",
     "test:browser": "make test-browser"

@@ -1,0 +1,102 @@
+name: Prepare draft release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rush-draft-release
+  cancel-in-progress: true
+
+jobs:
+  draft:
+    name: Create or update draft release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test release planning
+        run: node --test .github/scripts/*.test.mjs
+      - name: Generate release notes and refresh the draft
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node .github/scripts/prepare-draft-release.mjs
+
+  binaries:
+    name: Build ${{ matrix.target }} executable
+    needs: draft
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: linux-amd64
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+          - runner: macos-15-intel
+            target: darwin-amd64
+          - runner: macos-15
+            target: darwin-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Build release archive
+        env:
+          RELEASE_VERSION: ${{ needs.draft.outputs.version }}
+          EXPECTED_TARGET: ${{ matrix.target }}
+        run: |
+          actual_target="$(go env GOOS)-$(go env GOARCH)"
+          test "$actual_target" = "$EXPECTED_TARGET"
+          npm run build
+          archive="rush-v${RELEASE_VERSION}-${actual_target}"
+          mkdir -p "$archive/bin"
+          go build -trimpath -ldflags="-s -w" -o "$archive/bin/rush" ./cmd/rush
+          cp -R dist "$archive/dist"
+          tar -czf "$archive.tar.gz" "$archive"
+      - name: Attach executable to draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.draft.outputs.tag_name }}
+        run: gh release upload "$RELEASE_TAG" "rush-$RELEASE_TAG-${{ matrix.target }}.tar.gz" --clobber
+
+  ready:
+    name: Mark draft assets ready
+    needs: [draft, binaries]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Record the release version and source commit
+        env:
+          RELEASE_VERSION: ${{ needs.draft.outputs.version }}
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: >-
+          node -e
+          'require("node:fs").writeFileSync("rush-release.json",
+          JSON.stringify({version: process.env.RELEASE_VERSION, commit: process.env.SOURCE_COMMIT}) + "\n")'
+      - name: Attach readiness record to draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.draft.outputs.tag_name }}
+        run: gh release upload "$RELEASE_TAG" rush-release.json --clobber

@@ -63,4 +63,4 @@ Passing tests in one layer do not imply that another layer is integrated. The cu
 
 ## Privacy and naming
 
-The public browser API package is `rush-webtest`. Native binaries remain source-built artifacts and are not an npm distribution contract.
+The public browser API package is `rush-webtest`. Native binaries are separate GitHub release artifacts and are not an npm distribution contract.

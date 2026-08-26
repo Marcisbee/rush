@@ -1,6 +1,6 @@
 # Installation and configuration
 
-Rush publishes its browser API as the public, unscoped npm package `rush-webtest`. The native `rush` host is still built from a matching repository revision; there is no supported npm binary, Homebrew, winget, or system-package distribution yet.
+Rush publishes its browser API as the public, unscoped npm package `rush-webtest`. Matching native `rush` executables for Linux and macOS are attached to each GitHub release; there is no npm binary, Homebrew, winget, or system-package distribution yet.
 
 Install the browser API in each consumer project:
 
@@ -8,7 +8,7 @@ Install the browser API in each consumer project:
 npm install --save-dev rush-webtest
 ```
 
-Pin the Rush repository revision used to build the native host to the same release as the browser package.
+Download the executable archive whose release version matches the browser package and whose operating system and architecture match the target machine. The archive keeps `bin/rush` beside its required `dist/` browser API directory.
 
 ## Common build dependencies
 
