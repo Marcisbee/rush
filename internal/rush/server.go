@@ -21,13 +21,14 @@ import (
 )
 
 type Server struct {
-	socket  string
-	browser *BrowserPool
-	builder *Builder
-	started time.Time
-	cold    atomic.Bool
-	runMu   sync.Mutex
-	nextID  atomic.Uint64
+	socket   string
+	browser  *BrowserPool
+	builder  *Builder
+	started  time.Time
+	cold     atomic.Bool
+	runMu    sync.Mutex
+	stopOnce sync.Once
+	nextID   atomic.Uint64
 }
 
 func RunHost(socket string, headed bool, suiteCount int, ready, lifetime *os.File) error {
@@ -79,7 +80,7 @@ func RunHost(socket string, headed bool, suiteCount int, ready, lifetime *os.Fil
 	server.cold.Store(true)
 	defer server.builder.Close()
 	if lifetime != nil {
-		go stopWhenClosed(lifetime, browser.Stop)
+		go stopWhenClosed(lifetime, server.stop)
 	}
 
 	go func() {
@@ -95,11 +96,15 @@ func RunHost(socket string, headed bool, suiteCount int, ready, lifetime *os.Fil
 			}
 		case <-time.After(15 * time.Second):
 			writeReady(ready, fmt.Errorf("%s page did not become ready within 15s", BackendName()))
-			browser.Stop()
+			server.stop()
 		}
 	}()
 	browser.RunLoop()
 	return nil
+}
+
+func (s *Server) stop() {
+	s.stopOnce.Do(s.browser.Stop)
 }
 
 func scopedHostDirectory(socket string) (string, bool) {
@@ -302,7 +307,7 @@ func (s *Server) handle(connection net.Conn) {
 		_ = encoder.Encode(Response{})
 		go func() {
 			time.Sleep(25 * time.Millisecond)
-			s.browser.Stop()
+			s.stop()
 		}()
 		return
 	}

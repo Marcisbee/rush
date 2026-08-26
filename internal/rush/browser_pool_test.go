@@ -11,6 +11,7 @@ import (
 type fakeBrowserRealm struct {
 	batches [][]BuiltSuite
 	err     error
+	stops   int
 }
 
 func (f *fakeBrowserRealm) Ready() <-chan struct{} {
@@ -19,7 +20,7 @@ func (f *fakeBrowserRealm) Ready() <-chan struct{} {
 	return ready
 }
 func (f *fakeBrowserRealm) RunLoop() {}
-func (f *fakeBrowserRealm) Stop()    {}
+func (f *fakeBrowserRealm) Stop()    { f.stops++ }
 func (f *fakeBrowserRealm) Close()   {}
 func (f *fakeBrowserRealm) RunBatch(_ context.Context, _ string, bundles []BuiltSuite) (browserBatchResult, error) {
 	f.batches = append(f.batches, append([]BuiltSuite(nil), bundles...))
@@ -91,5 +92,15 @@ func TestRunAcrossRealmsSurfacesWorkerFailure(t *testing.T) {
 	_, err := runAcrossRealms(context.Background(), "run-1", []BuiltSuite{{File: "a"}, {File: "b"}}, realms)
 	if err == nil || !strings.Contains(err.Error(), "browser realm 2: crashed") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestServerStopIsIdempotent(t *testing.T) {
+	realm := &fakeBrowserRealm{}
+	server := &Server{browser: &BrowserPool{realms: []browserRealm{realm}}}
+	server.stop()
+	server.stop()
+	if realm.stops != 1 {
+		t.Fatalf("browser stops = %d, want 1", realm.stops)
 	}
 }
