@@ -1,4 +1,4 @@
-import { expect, test } from "@rush/browser"
+import { expect, test } from "rush-webtest"
 
 test("attributes browser resource and timer time separately", async () => {
   const response = await fetch("/__rush/timing")

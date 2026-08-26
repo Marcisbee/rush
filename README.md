@@ -2,7 +2,7 @@
 
 Rush is a persistent WebView-native JavaScript and TypeScript test runner. Tests execute in a real browser engine while a native host keeps the browser and incremental esbuild graph warm between runs.
 
-Rush is private and under architectural validation. `rush` and `@rush/browser` are working names, not published distribution contracts. Build from a pinned private repository revision; do not publish either name or make downstream release automation depend on it yet.
+Rush's browser API is published on npm as `rush-webtest`. The native `rush` host is built from this repository while binary distribution is still being designed.
 
 ## What works on this revision
 
@@ -21,7 +21,13 @@ The distinction matters: a compiled adapter or passing contract test is not auto
 
 ## Quick start
 
-Install Go 1.24 or newer, Node.js 22, WebKitGTK 4.1, GTK 3, X11/XTest, Xvfb, and Xauthority support. On Debian or Ubuntu:
+Install the browser API in the project that owns the tests:
+
+```sh
+npm install --save-dev rush-webtest
+```
+
+Build the native host from a matching Rush revision. Install Go 1.24 or newer, Node.js 22, WebKitGTK 4.1, GTK 3, X11/XTest, Xvfb, and Xauthority support. On Debian or Ubuntu:
 
 ```sh
 sudo apt-get install libwebkit2gtk-4.1-0 libgtk-3-0 libxtst6 xvfb xauth
@@ -54,14 +60,14 @@ Rush starts an authenticated Xvfb display for headless runs and keeps its daemon
 ./bin/rush test --headed examples/browser-api.test.ts
 ```
 
-No registry installation is supported while naming remains provisional. Consumer projects should build a pinned private revision and point `RUSH_BROWSER_MODULE` at that revision's `dist/index.js` when the adjacent package cannot be resolved.
+Rush resolves `rush-webtest` from the consumer project's `node_modules`. `RUSH_BROWSER_MODULE` remains available for local development against an unpublished browser API build.
 
 ## Test models
 
 Browser tests run assertions, DOM queries, mocks, timers, and synthetic interactions entirely inside reusable real-browser realms:
 
 ```ts
-import { expect, test } from "@rush/browser";
+import { expect, test } from "rush-webtest";
 
 test("updates the real DOM", ({ page }) => {
   document.body.innerHTML = `<button type="button">Save</button>`;
@@ -106,6 +112,7 @@ Shell globs and multiple files are accepted. The adapter-independent command pac
 - [Reporters, failure artifacts, and CI](docs/ci-reporting.md)
 - [Benchmark methodology and results](docs/benchmarks.md)
 - [Compatibility and platform status](docs/compatibility.md)
+- [Publishing releases](docs/releasing.md)
 - [Windows WebView2 setup and validation](docs/windows-webview2.md)
 - [WPE WebKit evaluation](docs/wpe-evaluation.md)
 - [macOS WKWebView build and validation](docs/macos-wkwebview.md)

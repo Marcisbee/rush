@@ -6,7 +6,7 @@ import (
 )
 
 func TestTransformHoistedMocksRegistersBeforeDelayedImports(t *testing.T) {
-	source := `import { test, vi } from "@rush/browser";
+	source := `import { test, vi } from "rush-webtest";
 import { read as readValue } from "./service.js";
 vi.mock("./service.js", () => ({ read: () => "mocked" }));
 test("mocked", () => readValue());`
@@ -26,7 +26,7 @@ test("mocked", () => readValue());`
 }
 
 func TestTransformHoistedMocksLeavesOrdinarySuiteUntouched(t *testing.T) {
-	source := `import { test } from "@rush/browser"; test("plain", () => {});`
+	source := `import { test } from "rush-webtest"; test("plain", () => {});`
 	transformed, err := transformHoistedMocks(source)
 	if err != nil {
 		t.Fatal(err)

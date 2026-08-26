@@ -117,7 +117,7 @@ func (b *Builder) BuildBatch(cwd string, names []string) ([]BuiltSuite, float64,
 						return api.OnLoadResult{}, fmt.Errorf("invalid Rush entry %q", args.Path)
 					}
 					entry := fmt.Sprintf(
-						"import * as __rushBrowser from \"@rush/browser\";\nimport %s;\nglobalThis.__rushBrowserModule = __rushBrowser;\n",
+						"import * as __rushBrowser from \"rush-webtest\";\nimport %s;\nglobalThis.__rushBrowserModule = __rushBrowser;\n",
 						strconv.Quote(filepath.ToSlash(absFiles[index])),
 					)
 					return api.OnLoadResult{Contents: &entry, Loader: api.LoaderJS, ResolveDir: cwd}, nil
@@ -156,7 +156,7 @@ func (b *Builder) BuildBatch(cwd string, names []string) ([]BuiltSuite, float64,
 		browserModulePlugin := api.Plugin{
 			Name: "rush-browser-module",
 			Setup: func(build api.PluginBuild) {
-				build.OnResolve(api.OnResolveOptions{Filter: "^@rush/browser$"}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
+				build.OnResolve(api.OnResolveOptions{Filter: "^rush-webtest$"}, func(args api.OnResolveArgs) (api.OnResolveResult, error) {
 					if path := browserModulePath(cwd); path != "" {
 						return api.OnResolveResult{Path: path}, nil
 					}
@@ -276,7 +276,7 @@ func inputsUnchanged(inputs map[string]fileStamp) bool {
 func browserModulePath(cwd string) string {
 	candidates := []string{os.Getenv("RUSH_BROWSER_MODULE")}
 	candidates = append(candidates,
-		filepath.Join(cwd, "node_modules", "@rush", "browser", "dist", "index.js"),
+		filepath.Join(cwd, "node_modules", "rush-webtest", "dist", "index.js"),
 		filepath.Join(cwd, "dist", "index.js"),
 	)
 	if executable, err := os.Executable(); err == nil {

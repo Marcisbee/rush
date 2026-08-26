@@ -1,8 +1,14 @@
 # Installation and configuration
 
-Rush currently supports source builds from this private repository. The binary name `rush` and package name `@rush/browser` are provisional. There is no supported npm, Homebrew, winget, or system-package distribution yet.
+Rush publishes its browser API as the public, unscoped npm package `rush-webtest`. The native `rush` host is still built from a matching repository revision; there is no supported npm binary, Homebrew, winget, or system-package distribution yet.
 
-Pin the repository revision used by a consumer and keep the repository and built artifacts private until the architecture and names are approved.
+Install the browser API in each consumer project:
+
+```sh
+npm install --save-dev rush-webtest
+```
+
+Pin the Rush repository revision used to build the native host to the same release as the browser package.
 
 ## Common build dependencies
 
@@ -89,23 +95,23 @@ The adapter is not yet selectable through `bin/rush`. See [Windows WebView2 setu
 Every test imports the working package name:
 
 ```ts
-import { expect, test } from "@rush/browser";
+import { expect, test } from "rush-webtest";
 ```
 
 The Linux builder resolves that import in this order:
 
 1. `RUSH_BROWSER_MODULE`.
-2. `<consumer>/node_modules/@rush/browser/dist/index.js`.
+2. `<consumer>/node_modules/rush-webtest/dist/index.js`.
 3. `<consumer>/dist/index.js`.
 4. `dist/index.js` adjacent to the Rush binary's parent directory.
 
-For private cross-repository trials, build a pinned Rush checkout and set an absolute `RUSH_BROWSER_MODULE` path. Do not publish a temporary registry package or rely on a global symlink.
+For local development against an unpublished browser API build, set an absolute `RUSH_BROWSER_MODULE` path instead of relying on a global symlink.
 
 ## Environment configuration
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `RUSH_BROWSER_MODULE` | Absolute path to the built browser API for private consumer layouts | Resolver search above |
+| `RUSH_BROWSER_MODULE` | Absolute path to a locally built browser API | Resolver search above |
 | `RUSH_JSX_IMPORT_SOURCE` | Overrides automatic JSX runtime selection | React if declared, otherwise Preact if it alone is declared, otherwise React |
 | `RUSH_NODE_ENV` | Compile-time value of `process.env.NODE_ENV` in suites | `test` |
 | `RUSH_WEBVIEW_POOL_SIZE` | Number of reusable Linux or macOS browser realms, from one through four | Up to three hidden; one headed |
@@ -113,4 +119,4 @@ For private cross-repository trials, build a pinned Rush checkout and set an abs
 
 `RUSH_READY_FD` is an internal daemon handshake and is not user configuration.
 
-Changing the JSX import source or Node environment creates a distinct incremental build context. Stop the daemon after changing toolchain revisions or private package paths so the next run starts with an unambiguous process and module graph.
+Changing the JSX import source or Node environment creates a distinct incremental build context. Stop the daemon after changing toolchain revisions or local package paths so the next run starts with an unambiguous process and module graph.

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, screen, test } from "@rush/browser"
+import { beforeEach, describe, expect, screen, test } from "rush-webtest"
 
 describe("Rush browser runtime", () => {
   beforeEach(() => {

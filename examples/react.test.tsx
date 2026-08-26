@@ -1,6 +1,6 @@
 import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { expect, test } from "@rush/browser";
+import { expect, test } from "rush-webtest";
 
 function SaveButton() {
   const [saved, setSaved] = React.useState(false);

@@ -135,7 +135,7 @@ func benchmarkRebuild(root string, repeat int) (benchmarkResult, error) {
 	defer os.RemoveAll(temp)
 	entry := filepath.Join(temp, "rebuild.ts")
 	write := func(iteration int) error {
-		content := fmt.Sprintf("import { expect, test } from '@rush/browser';\nfor (let i = 0; i < 100; i++) test(`rebuild ${i}`, () => expect(i + %d).toBe(i + %d));\n", iteration, iteration)
+		content := fmt.Sprintf("import { expect, test } from 'rush-webtest';\nfor (let i = 0; i < 100; i++) test(`rebuild ${i}`, () => expect(i + %d).toBe(i + %d));\n", iteration, iteration)
 		return os.WriteFile(entry, []byte(content), 0600)
 	}
 	if err := write(0); err != nil {

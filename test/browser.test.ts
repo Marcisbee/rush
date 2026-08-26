@@ -6,7 +6,7 @@ import {
   test,
   transformHoistedMocks,
   vi,
-} from "@rush/browser";
+} from "rush-webtest";
 
 beforeEach(() => {
   document.body.innerHTML = `
@@ -90,7 +90,7 @@ describe("browser API", () => {
 describe("static mock hoisting", () => {
   test("registers mocks before rewriting imports", async () => {
     const transformed = await transformHoistedMocks(`
-      import { vi, test } from "@rush/browser";
+      import { vi, test } from "rush-webtest";
       import service, { read as load } from "./service.js";
       vi.mock("./service.js", () => ({ default: { mocked: true }, read: vi.fn(() => 7) }));
       test("mocked", () => load());
@@ -103,7 +103,7 @@ describe("static mock hoisting", () => {
   });
 
   test("leaves modules without static mocks unchanged", async () => {
-    const source = `import { test } from "@rush/browser"; test("ok", () => {});`;
+    const source = `import { test } from "rush-webtest"; test("ok", () => {});`;
     expect(await transformHoistedMocks(source)).toBe(source);
   });
 });

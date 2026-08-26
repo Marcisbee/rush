@@ -5,8 +5,8 @@
     "moduleResolution": "NodeNext",
     "baseUrl": ".",
     "paths": {
-      "@rush/browser": ["./src/index.ts"],
-      "@rush/browser/internal": ["./src/mock.ts"]
+      "rush-webtest": ["./src/index.ts"],
+      "rush-webtest/internal": ["./src/mock.ts"]
     },
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "strict": true,

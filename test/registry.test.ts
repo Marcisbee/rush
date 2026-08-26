@@ -8,7 +8,7 @@ import {
   expect,
   getSnapshotValues,
   test,
-} from "@rush/browser";
+} from "rush-webtest";
 
 describe("suite registry", () => {
   const events: string[] = [];

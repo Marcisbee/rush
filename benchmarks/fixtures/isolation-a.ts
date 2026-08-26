@@ -1,4 +1,4 @@
-import { test } from "@rush/browser"
+import { test } from "rush-webtest"
 
 test("leaves browser state for the suite reset", () => {
   document.body.innerHTML = "<p>leak</p>"

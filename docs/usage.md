@@ -40,7 +40,7 @@ import {
   page,
   test,
   vi,
-} from "@rush/browser";
+} from "rush-webtest";
 
 describe("counter", () => {
   beforeEach(() => {
@@ -76,7 +76,7 @@ Fake timers are restored after each test. File isolation resets the registry and
 Testing Library DOM queries are re-exported. `page` and the per-test `page` context provide locators for role, text, label, placeholder, and test id. Locator methods include querying descendants, reading text or attributes, and synthetic `click`, `type`, `fill`, and keyboard dispatch.
 
 ```ts
-import { expect, test } from "@rush/browser";
+import { expect, test } from "rush-webtest";
 
 test("submits locally", ({ page }) => {
   document.body.innerHTML = `
