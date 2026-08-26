@@ -57,15 +57,20 @@ WPE is headless-only and has no visible inspector path. It remains opt-in becaus
 
 ## macOS
 
-`RushWKWebViewAdapter` requires macOS 13 or newer and a Swift 5.9-compatible toolchain:
+Rush requires macOS 13 or newer, Go 1.24 or newer, and the C/Objective-C compiler and macOS SDK supplied by Xcode Command Line Tools. It does not require the Swift compiler or runtime:
 
 ```sh
-swift test
+xcode-select --install # only when the command-line tools are missing
+npm ci
+make build
+./bin/rush doctor
+./bin/rush test examples/basic.test.ts
+./bin/rush stop
 ```
 
-Normal realms are unattached to a window. Debug realms are visible and inspectable through Safari's Develop menu on macOS 13.3 or newer. Hidden conformance tests need no Accessibility permission. Trusted Core Graphics input requires a logged-in GUI session and explicit Accessibility authorization.
+The build uses cgo to compile a thin Objective-C C-ABI shim directly into `bin/rush`. The resulting executable links Apple AppKit, WebKit, ApplicationServices, and CoreGraphics system frameworks. It does not extract a WebView dynamic library or start a Swift/helper adapter process.
 
-The Swift adapter is a library and harness on this revision. It is not selected by `bin/rush`.
+Normal runs create hidden WKWebView windows. `--headed` presents the window and enables Web Inspector on macOS 13.3 or newer. Hidden tests need no Accessibility permission. Trusted Core Graphics input requires a headed run, a logged-in GUI session, and explicit Accessibility authorization for the Rush executable or its launching terminal.
 
 ## Windows
 
@@ -103,7 +108,7 @@ For private cross-repository trials, build a pinned Rush checkout and set an abs
 | `RUSH_BROWSER_MODULE` | Absolute path to the built browser API for private consumer layouts | Resolver search above |
 | `RUSH_JSX_IMPORT_SOURCE` | Overrides automatic JSX runtime selection | React if declared, otherwise Preact if it alone is declared, otherwise React |
 | `RUSH_NODE_ENV` | Compile-time value of `process.env.NODE_ENV` in suites | `test` |
-| `RUSH_WEBVIEW_POOL_SIZE` | Number of reusable Linux browser realms, from one through four | Up to three headless; one headed |
+| `RUSH_WEBVIEW_POOL_SIZE` | Number of reusable Linux or macOS browser realms, from one through four | Up to three hidden; one headed |
 | `DISPLAY` / `WAYLAND_DISPLAY` | Select the existing desktop for `--headed` | Rush-managed Xvfb in headless Linux mode |
 
 `RUSH_READY_FD` is an internal daemon handshake and is not user configuration.

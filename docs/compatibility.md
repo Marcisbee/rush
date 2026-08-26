@@ -8,7 +8,7 @@ This page describes the source tree at the revision containing it. Project proof
 | --- | --- | --- | --- | --- | --- |
 | Linux default | WebKitGTK 4.1 under Xvfb | Yes | Yes, with an existing display | X11/XTest through the explicit native API | Browser, app, and session CLI available |
 | Linux optional | WPE WebKit 2.52+ headless backend | Yes | No | No | Browser CLI available through `make build-wpe` |
-| macOS 13+ | WKWebView | Hidden realms | Visible window and Safari Develop inspection | Core Graphics with Accessibility permission | Swift library and harness |
+| macOS 13+ | WKWebView | Hidden windows | Visible window and Web Inspector | Core Graphics with Accessibility permission | Browser, app, and session CLI available |
 | Windows | WebView2 | Hidden/off-screen host | Visible window and DevTools | `SendInput` on an interactive desktop | Go adapter and validation harness |
 
 A clean Linux server does not already include a browser runtime. Install the packages in [Installation and configuration](installation.md) or provide a complete WPE deployment.
@@ -31,11 +31,11 @@ It is not a drop-in implementation of every Vitest or Playwright feature. In par
 - Snapshot persistence and update commands depend on host integration and are not supplied by the Linux proof CLI.
 - Browser-engine behavior differs between WebKit and Chromium. Keep engine-sensitive tests explicit.
 - Cross-origin frame content remains subject to browser security boundaries.
-- The macOS and Windows adapters are validation libraries and harnesses rather than selectable backends in `bin/rush`.
+- The Windows adapter remains a validation library and harness rather than a selectable backend in `bin/rush`.
 
 ## Isolation boundary
 
-Every Linux browser suite receives a fresh bundled registry and mock runtime. Before reuse, the page clears DOM and style state, timers, animation frames, tracked listeners, cookies, local/session storage, IndexedDB, Cache Storage, service workers, performance entries, and globals introduced by the bundle.
+Every Linux or macOS browser suite receives a fresh bundled registry and mock runtime. Before reuse, the page clears DOM and style state, timers, animation frames, tracked listeners, cookies, local/session storage, IndexedDB, Cache Storage, service workers, performance entries, and globals introduced by the bundle.
 
 The current boundary does not claim cleanup for permissions, downloads, browser extensions, operating-system clipboard state, or external processes. Tests that modify those surfaces need explicit teardown or a stronger per-profile/application isolation adapter.
 

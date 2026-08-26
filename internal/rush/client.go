@@ -106,16 +106,16 @@ func spawnDaemon(socket string, headed bool) error {
 			writer.Close()
 			return fmt.Errorf("the %s adapter is headless-only; use the default WebKitGTK build for headed debugging", BackendName())
 		}
-		if os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {
+		if runtime.GOOS == "linux" && os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {
 			writer.Close()
 			return errors.New("headed mode requires DISPLAY or WAYLAND_DISPLAY; start a desktop session or omit --headed")
 		}
 		args = append(args, "--headed")
 		command = exec.Command(executable, args...)
 	} else {
-		if runtime.GOOS != "linux" {
+		if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
 			writer.Close()
-			return fmt.Errorf("the initial Rush adapter supports Linux only (running %s)", runtime.GOOS)
+			return fmt.Errorf("the Rush CLI does not have a native adapter for %s", runtime.GOOS)
 		}
 		command = exec.Command(executable, args...)
 	}

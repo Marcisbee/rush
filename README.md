@@ -11,7 +11,7 @@ Rush is private and under architectural validation. `rush` and `@rush/browser` a
 | Linux WebKitGTK runner | Browser, app, and isolated-session tests through `./bin/rush` in headless or headed mode |
 | Linux trusted input | X11/XTest mouse and keyboard input through the explicit native API |
 | Linux WPE runner | Opt-in headless browser runner; no headed debugging or trusted desktop input |
-| macOS WKWebView adapter | Swift package and validation harness; not wired to the Go CLI |
+| macOS WKWebView runner | In-process Objective-C/cgo WKWebView adapter through `./bin/rush`, hidden or headed |
 | Windows WebView2 adapter | Go adapter and validation harness; not wired to the Go CLI |
 | Browser API | Vitest-like suites, assertions, mocks, fake timers, snapshots, Testing Library queries, and locators |
 | Execution | Bounded parallel browser realms, app navigation/interception, and isolated named clients |
@@ -19,7 +19,7 @@ Rush is private and under architectural validation. `rush` and `@rush/browser` a
 
 The distinction matters: a compiled adapter or passing contract test is not automatically an end-user CLI capability. See [Compatibility and platform status](docs/compatibility.md) before choosing Rush for a suite.
 
-## Quick start on Linux
+## Quick start
 
 Install Go 1.24 or newer, Node.js 22, WebKitGTK 4.1, GTK 3, X11/XTest, Xvfb, and Xauthority support. On Debian or Ubuntu:
 
@@ -36,6 +36,17 @@ RUSH_WEBVIEW_POOL_SIZE=1 ./bin/rush test examples/app-automation.test.ts
 ```
 
 Ubuntu releases using the 64-bit time ABI may call the GTK package `libgtk-3-0t64`; installing `libwebkit2gtk-4.1-0` normally resolves the correct runtime dependency.
+
+On macOS 13 or newer, the same build produces one native executable using Apple system frameworks. Xcode Command Line Tools are required for their C/Objective-C compiler and macOS SDK; Swift is not:
+
+```sh
+xcode-select --install # if the command-line tools are not installed
+npm ci
+make build
+./bin/rush doctor
+./bin/rush test examples/basic.test.ts examples/browser-api.test.ts
+./bin/rush stop
+```
 
 Rush starts an authenticated Xvfb display for headless runs and keeps its daemon warm. Headed mode requires an existing `DISPLAY` or `WAYLAND_DISPLAY`:
 
@@ -65,7 +76,7 @@ App tests use real navigation through Rush's loopback proxy, request interceptio
 
 ## Isolation and performance
 
-Headless Linux keeps up to three browser realms warm by default; `RUSH_WEBVIEW_POOL_SIZE` selects one through four realms. Each file receives its own esbuild bundle, module graph, registry, and mock runtime. Before reuse, Rush clears DOM and style state, timers, listeners, cookies, local and session storage, IndexedDB, Cache Storage, service workers, performance entries, and bundle globals.
+Hidden Linux and macOS runs keep up to three browser realms warm by default; `RUSH_WEBVIEW_POOL_SIZE` selects one through four realms. Each file receives its own esbuild bundle, module graph, registry, and mock runtime. Before reuse, Rush clears DOM and style state, timers, listeners, cookies, local and session storage, IndexedDB, Cache Storage, service workers, performance entries, and bundle globals.
 
 The benchmark command validates pass counts and the declared product targets from raw repeated samples:
 
@@ -76,7 +87,7 @@ The benchmark command validates pass counts and the declared product targets fro
 
 Normal and JSON output report build, runner, application, network, intentional-wait, browser-execution, reset, and reporting measurements separately. Network and timers can overlap, so the phases are attribution signals rather than an accounting identity. See [Benchmark methodology and measured boundaries](docs/benchmarks.md).
 
-## Linux commands
+## Commands
 
 ```text
 rush test [--headed] [--json] [--timeout DURATION] FILE...
@@ -98,6 +109,7 @@ Shell globs and multiple files are accepted. The adapter-independent command pac
 - [Workspace migration guidance](docs/migration.md)
 - [Windows WebView2 setup and validation](docs/windows-webview2.md)
 - [WPE WebKit evaluation](docs/wpe-evaluation.md)
+- [macOS WKWebView build and validation](docs/macos-wkwebview.md)
 
 ## Verification
 
@@ -113,7 +125,7 @@ RUSH_WEBVIEW_POOL_SIZE=1 ./bin/rush test examples/app-automation.test.ts
 ./bin/rush stop
 ./bin/rush test examples/session.test.ts
 ./bin/rush bench --repeat 5 --cold-repeat 3 --json
-swift test # macOS only
+go build ./cmd/rush # uses Objective-C/cgo automatically on macOS
 ```
 
-GitHub Actions runs the Go and TypeScript checks, a real WebKitGTK/Xvfb example run, the measured benchmark contract, the Windows WebView2 harness, and the macOS WKWebView harness. Benchmark JSON is retained as a workflow artifact so a pass can be audited from its raw samples.
+GitHub Actions runs the Go and TypeScript checks, a real WebKitGTK/Xvfb example run, the measured benchmark contract, the Windows WebView2 harness, and the Objective-C/cgo WKWebView adapter through the normal macOS CLI. The macOS job also rejects Swift and external WebView library linkage. Benchmark JSON is retained as a workflow artifact so a pass can be audited from its raw samples.

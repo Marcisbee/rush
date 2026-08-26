@@ -68,7 +68,7 @@ func NewBrowser(headed bool) (*Browser, error) {
 	harnessServer := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = harnessServer.Serve(listener) }()
 
-	view, err := webview.New(headed)
+	view, err := newWebView(headed)
 	if err != nil {
 		_ = harnessServer.Close()
 		return nil, fmt.Errorf("%s is unavailable: %w", BackendName(), err)
