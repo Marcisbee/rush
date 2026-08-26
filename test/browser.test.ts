@@ -63,6 +63,62 @@ describe("browser API", () => {
     expect(mock).toHaveBeenLastCalledWith(3);
   });
 
+  test("supports Vitest-compatible mock inspection matchers", () => {
+    const implementation = (value: number) => value * 2;
+    const mock = vi.fn(implementation).mockImplementationOnce(() => 99);
+    const structured = vi.fn();
+
+    expect(mock.getMockImplementation()).toBe(implementation);
+    expect(mock(1)).toBe(99);
+    mock(2);
+    structured({ id: 7 });
+
+    expect(mock).not.toHaveBeenCalledOnce();
+    expect(mock).toHaveBeenNthCalledWith(1, 1);
+    expect(mock).toHaveBeenNthCalledWith(2, 2);
+    expect(structured).toHaveBeenCalledOnce();
+    expect(structured).toHaveBeenNthCalledWith(1, expect.objectContaining({ id: 7 }));
+    expect(mock.getMockImplementation()).toBe(implementation);
+    mock.mockReset();
+    expect(mock.getMockImplementation()).toBeUndefined();
+  });
+
+  test("supports Vitest-compatible DOM state matchers", () => {
+    const button = screen.getByRole("button", { name: "Save changes" });
+    const checkbox = screen.getByRole("checkbox", { name: "Subscribe" });
+
+    button.className = "primary action-button";
+    button.style.cssText = "width: 170px; color: rgb(12, 34, 56)";
+    button.focus();
+    (checkbox as HTMLInputElement).checked = true;
+
+    expect(button).toHaveClass("primary", "action-button");
+    expect(button).toHaveClass(/action-/);
+    expect(button).toHaveClass("primary action-button", { exact: true });
+    expect(button).not.toHaveClass("primary", { exact: true });
+    expect(document.body).not.toHaveClass();
+    expect(button).toHaveStyle({ width: "170px", color: "#0c2238" });
+    expect(button).toHaveStyle("width: 170px");
+    expect(button).toHaveAccessibleName("Save changes");
+    expect(button).toHaveAccessibleName(/save/i);
+    expect(button).toHaveAccessibleName();
+    expect(button).toHaveFocus();
+    expect(checkbox).toBeChecked();
+    expect(button).toBeEnabled();
+
+    const ariaCheckbox = document.createElement("div");
+    ariaCheckbox.setAttribute("role", "checkbox");
+    ariaCheckbox.setAttribute("aria-checked", "true");
+    expect(ariaCheckbox).toBeChecked();
+
+    const fieldset = document.createElement("fieldset");
+    fieldset.disabled = true;
+    const disabledButton = document.createElement("button");
+    fieldset.append(disabledButton);
+    expect(disabledButton).toBeDisabled();
+    expect(disabledButton).not.toBeEnabled();
+  });
+
   test("spies on and restores methods", () => {
     const target = { greet(name: string) { return `hello ${name}`; } };
     const original = target.greet;

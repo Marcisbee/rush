@@ -1,3 +1,4 @@
+import { computeAccessibleName } from "dom-accessibility-api";
 import { matchSnapshot, serialize } from "./snapshots.js";
 
 const asymmetric = Symbol("rush.asymmetric");
@@ -47,6 +48,8 @@ function format(value: unknown): string {
 }
 
 type DomConstructorName = "Node" | "Element" | "HTMLElement";
+type ClassExpectation = string | RegExp;
+type StyleExpectation = string | Record<string, unknown>;
 
 function isDomInstance<T extends object>(value: unknown, constructorName: DomConstructorName): value is T {
   if (typeof value !== "object" || value === null) return false;
@@ -66,6 +69,99 @@ function isElement(value: unknown): value is Element {
 
 function isHtmlElement(value: unknown): value is HTMLElement {
   return isDomInstance<HTMLElement>(value, "HTMLElement");
+}
+
+function matchesPattern(value: string, expected: string | RegExp): boolean {
+  if (typeof expected === "string") return value === expected;
+  expected.lastIndex = 0;
+  return expected.test(value);
+}
+
+function classList(value: unknown): string[] | undefined {
+  if (!isElement(value)) return undefined;
+  return (value.getAttribute("class") ?? "").split(/\s+/).filter(Boolean);
+}
+
+function parseExpectedClasses(values: readonly ClassExpectation[]): ClassExpectation[] {
+  const expected: ClassExpectation[] = [];
+  for (const value of values) {
+    if (typeof value === "string") expected.push(...value.split(/\s+/).filter(Boolean));
+    else expected.push(value);
+  }
+  return expected;
+}
+
+function hasClasses(value: unknown, expected: readonly ClassExpectation[], exact: boolean): boolean {
+  const received = classList(value);
+  if (!received || expected.length === 0) return false;
+  const containsExpected = expected.every((item) => received.some((className) => matchesPattern(className, item)));
+  return containsExpected && (!exact || received.length === expected.length);
+}
+
+function expectedStyles(element: Element, css: StyleExpectation): Record<string, string> {
+  const declaration = element.ownerDocument.createElement("div").style;
+  if (typeof css === "string") declaration.cssText = css;
+  else {
+    for (const [property, value] of Object.entries(css)) {
+      if (property.startsWith("--")) declaration.setProperty(property, String(value));
+      else (declaration as unknown as Record<string, string>)[property] = String(value);
+    }
+  }
+
+  const styles: Record<string, string> = {};
+  for (let index = 0; index < declaration.length; index += 1) {
+    const property = declaration.item(index);
+    styles[property] = declaration.getPropertyValue(property);
+  }
+  return styles;
+}
+
+function hasStyles(value: unknown, expected: StyleExpectation): boolean {
+  if (!isElement(value)) return false;
+  const styles = expectedStyles(value, expected);
+  if (Object.keys(styles).length === 0) return false;
+  const view = value.ownerDocument.defaultView;
+  if (!view) return false;
+  const computed = view.getComputedStyle(value);
+  return Object.entries(styles).every(([property, expectedValue]) => computed.getPropertyValue(property) === expectedValue);
+}
+
+const disableableTags = new Set(["fieldset", "input", "select", "optgroup", "option", "button", "textarea"]);
+
+function canBeDisabled(element: Element): boolean {
+  const tag = element.tagName.toLowerCase();
+  return disableableTags.has(tag) || tag.includes("-");
+}
+
+function isFirstLegend(element: Element, fieldset: Element): boolean {
+  return element.tagName.toLowerCase() === "legend"
+    && fieldset.tagName.toLowerCase() === "fieldset"
+    && [...fieldset.children].find((child) => child.tagName.toLowerCase() === "legend") === element;
+}
+
+function isDisabledElement(element: Element): boolean {
+  return canBeDisabled(element) && element.hasAttribute("disabled");
+}
+
+function hasDisabledAncestor(element: Element): boolean {
+  const parent = element.parentElement;
+  if (!parent) return false;
+  return (isDisabledElement(parent) && !isFirstLegend(element, parent)) || hasDisabledAncestor(parent);
+}
+
+function isDisabled(value: unknown): boolean {
+  return isElement(value) && canBeDisabled(value) && (isDisabledElement(value) || hasDisabledAncestor(value));
+}
+
+function isChecked(value: unknown): boolean {
+  if (!isElement(value)) return false;
+  if (value.tagName.toLowerCase() === "input") {
+    const input = value as HTMLInputElement;
+    return (input.type === "checkbox" || input.type === "radio") && input.checked;
+  }
+  const role = value.getAttribute("role");
+  return (role === "checkbox" || role === "radio" || role === "switch")
+    && value.getAttribute("aria-checked") === "true";
 }
 
 class Expectation {
@@ -185,16 +281,51 @@ class Expectation {
   toHaveAttribute(name: string, expected?: unknown): MatcherResult {
     return this.apply("to have attribute", (value) => isElement(value) && value.hasAttribute(name) && (arguments.length < 2 || value.getAttribute(name) === String(expected)), name);
   }
+  toHaveClass(...values: Array<ClassExpectation | { exact: boolean }>): MatcherResult {
+    const maybeOptions = values.at(-1);
+    const options = typeof maybeOptions === "object" && !(maybeOptions instanceof RegExp) ? values.pop() as { exact: boolean } : undefined;
+    const expected = parseExpectedClasses(values as ClassExpectation[]);
+    if (options?.exact && expected.some((value) => value instanceof RegExp)) {
+      throw new Error("Exact class matching does not support regular expressions");
+    }
+    return this.apply("to have class", (value) => {
+      if (expected.length === 0) return this.inverted && (classList(value)?.length ?? 0) > 0;
+      return hasClasses(value, expected, options?.exact ?? false);
+    }, expected);
+  }
+  toHaveStyle(expected: StyleExpectation): MatcherResult {
+    return this.apply("to have style", (value) => hasStyles(value, expected), expected);
+  }
+  toHaveAccessibleName(expected?: string | RegExp | AsymmetricMatcher): MatcherResult {
+    const hasExpected = arguments.length > 0;
+    return this.apply("to have accessible name", (value) => {
+      if (!isElement(value)) return false;
+      const name = computeAccessibleName(value);
+      return hasExpected
+        ? expected instanceof RegExp ? matchesPattern(name, expected) : equals(name, expected)
+        : name !== "";
+    }, expected);
+  }
+  toHaveFocus(): MatcherResult {
+    return this.apply("to have focus", (value) => isElement(value) && value.ownerDocument.activeElement === value);
+  }
   toBeVisible(): MatcherResult {
     return this.apply("to be visible", (value) => isHtmlElement(value) && !value.hidden && value.style.display !== "none" && value.style.visibility !== "hidden");
   }
   toBeDisabled(): MatcherResult {
-    return this.apply("to be disabled", (value) => isHtmlElement(value) && ("disabled" in value ? Boolean(value.disabled) : value.getAttribute("aria-disabled") === "true"));
+    return this.apply("to be disabled", isDisabled);
+  }
+  toBeEnabled(): MatcherResult {
+    return this.apply("to be enabled", (value) => isElement(value) && !isDisabled(value));
+  }
+  toBeChecked(): MatcherResult {
+    return this.apply("to be checked", isChecked);
   }
   toHaveValue(expected: unknown): MatcherResult {
     return this.apply("to have value", (value) => isHtmlElement(value) && "value" in value && Object.is(value.value, expected), expected);
   }
   toHaveBeenCalled(): MatcherResult { return this.apply("to have been called", hasCalls); }
+  toHaveBeenCalledOnce(): MatcherResult { return this.apply("to have been called once", (value) => callList(value)?.length === 1); }
   toHaveBeenCalledTimes(expected: number): MatcherResult { return this.apply("to have been called times", (value) => callList(value)?.length === expected, expected); }
   toHaveBeenCalledWith(...expected: unknown[]): MatcherResult {
     return this.apply("to have been called with", (value) => callList(value)?.some((call) => equals(call, expected)) ?? false, expected);
@@ -203,6 +334,12 @@ class Expectation {
     return this.apply("to have been last called with", (value) => {
       const calls = callList(value); return calls !== undefined && calls.length > 0 && equals(calls.at(-1), expected);
     }, expected);
+  }
+  toHaveBeenNthCalledWith(index: number, ...expected: unknown[]): MatcherResult {
+    return this.apply("to have been nth called with", (value) => {
+      const calls = callList(value);
+      return Number.isInteger(index) && index > 0 && calls !== undefined && equals(calls[index - 1], expected);
+    }, [index, ...expected]);
   }
   toMatchSnapshot(name?: string): MatcherResult {
     if (this.promiseMode !== "none") return this.apply("to match snapshot", (value) => { matchSnapshot(value, name); return true; });
