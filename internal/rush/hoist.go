@@ -21,9 +21,13 @@ type mockCall struct {
 
 // transformHoistedMocks mirrors the public API's hoist transform at the native
 // builder seam. Static imports are delayed until top-level vi.mock registrations
-// exist, while the async registration promise lets the WebKit harness wait before
-// it starts the shared registry.
+// exist. The builder wraps the complete output in the registration promise that
+// the WebKit harness awaits.
 func transformHoistedMocks(source string) (string, error) {
+	return transformHoistedMocksWithIDs(source, nil)
+}
+
+func transformHoistedMocksWithIDs(source string, resolvedIDs map[string]string) (string, error) {
 	mocks, err := findMockCalls(source)
 	if err != nil || len(mocks) == 0 {
 		return source, err
@@ -38,7 +42,16 @@ func transformHoistedMocks(source string) (string, error) {
 		return "", err
 	}
 	for _, item := range imports {
-		rewritten, rewriteErr := rewriteStaticImport(source[item.start:item.end])
+		statement := source[item.start:item.end]
+		sourceID, sourceErr := staticImportSource(statement)
+		if sourceErr != nil {
+			return "", sourceErr
+		}
+		runtimeID := sourceID
+		if resolved := resolvedIDs[sourceID]; resolved != "" {
+			runtimeID = resolved
+		}
+		rewritten, rewriteErr := rewriteStaticImportWithID(statement, runtimeID)
 		if rewriteErr != nil {
 			return "", rewriteErr
 		}
@@ -52,11 +65,54 @@ func transformHoistedMocks(source string) (string, error) {
 	}
 	registrations := make([]string, 0, len(mocks))
 	for _, mock := range mocks {
-		registrations = append(registrations, "__rushRegisterMock__("+mock.arguments+");")
+		arguments := mock.arguments
+		sourceID, sourceErr := mockModuleID(arguments)
+		if sourceErr != nil {
+			return "", sourceErr
+		}
+		if resolved := resolvedIDs[sourceID]; resolved != "" {
+			arguments, err = replaceFirstStringArgument(arguments, resolved)
+			if err != nil {
+				return "", err
+			}
+		}
+		registrations = append(registrations, "__rushRegisterMock__("+arguments+");")
 	}
 	return "import { __rushRegisterMock__, __rushImport__ } from \"rush-webtest/internal\";\n" +
-		strings.Join(registrations, "\n") +
-		"\nglobalThis.__rushRegistration = (async () => {\n" + body + "\n})();\n", nil
+		strings.Join(registrations, "\n") + "\n" + body, nil
+}
+
+func transformDependencyImports(source string, resolvedIDs map[string]string) (string, error) {
+	imports, err := findStaticImports(source)
+	if err != nil {
+		return "", err
+	}
+	replacements := make([]sourceReplacement, 0, len(imports))
+	for _, item := range imports {
+		statement := source[item.start:item.end]
+		sourceID, sourceErr := staticImportSource(statement)
+		if sourceErr != nil {
+			return "", sourceErr
+		}
+		resolvedID := resolvedIDs[sourceID]
+		if resolvedID == "" {
+			continue
+		}
+		rewritten, rewriteErr := rewriteStaticImportWithID(statement, resolvedID)
+		if rewriteErr != nil {
+			return "", rewriteErr
+		}
+		replacements = append(replacements, sourceReplacement{start: item.start, end: item.end, value: rewritten})
+	}
+	if len(replacements) == 0 {
+		return source, nil
+	}
+	sort.Slice(replacements, func(left, right int) bool { return replacements[left].start > replacements[right].start })
+	body := source
+	for _, replacement := range replacements {
+		body = body[:replacement.start] + replacement.value + body[replacement.end:]
+	}
+	return "import { __rushImport__ } from \"rush-webtest/internal\";\n" + body, nil
 }
 
 func findMockCalls(source string) ([]mockCall, error) {
@@ -183,6 +239,14 @@ func findImportEnd(source string, start int) (int, error) {
 }
 
 func rewriteStaticImport(statement string) (string, error) {
+	sourceID, err := staticImportSource(statement)
+	if err != nil {
+		return "", err
+	}
+	return rewriteStaticImportWithID(statement, sourceID)
+}
+
+func rewriteStaticImportWithID(statement, runtimeID string) (string, error) {
 	trimmed := strings.TrimSpace(strings.TrimSuffix(statement, ";"))
 	if strings.HasPrefix(trimmed, "import type ") {
 		return "", nil
@@ -192,7 +256,7 @@ func rewriteStaticImport(statement string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("await __rushImport__(%q, () => import(%q));", sourceID, sourceID), nil
+		return fmt.Sprintf("await __rushImport__(%q, () => import(%q));", runtimeID, sourceID), nil
 	}
 	from := strings.LastIndex(trimmed, " from ")
 	if from == -1 {
@@ -203,7 +267,7 @@ func rewriteStaticImport(statement string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	loader := fmt.Sprintf("await __rushImport__(%q, () => import(%q))", sourceID, sourceID)
+	loader := fmt.Sprintf("await __rushImport__(%q, () => import(%q))", runtimeID, sourceID)
 	if strings.HasPrefix(clause, "*") {
 		parts := strings.Fields(clause)
 		if len(parts) != 3 || parts[0] != "*" || parts[1] != "as" {
@@ -242,6 +306,43 @@ func rewriteStaticImport(statement string) (string, error) {
 		}
 	}
 	return "const { " + strings.Join(bindings, ", ") + " } = " + loader + ";", nil
+}
+
+func staticImportSource(statement string) (string, error) {
+	trimmed := strings.TrimSpace(strings.TrimSuffix(statement, ";"))
+	if strings.HasPrefix(trimmed, "import type ") {
+		trimmed = strings.TrimPrefix(trimmed, "import type ")
+	}
+	if strings.HasPrefix(trimmed, "import ") {
+		trimmed = strings.TrimPrefix(trimmed, "import ")
+	}
+	if len(trimmed) > 0 && (trimmed[0] == '\'' || trimmed[0] == '"') {
+		return quotedImportSource(trimmed)
+	}
+	from := strings.LastIndex(trimmed, " from ")
+	if from == -1 {
+		return "", fmt.Errorf("unsupported static import while hoisting mocks: %s", strings.TrimSpace(statement))
+	}
+	return quotedImportSource(strings.TrimSpace(trimmed[from+len(" from "):]))
+}
+
+func mockModuleID(arguments string) (string, error) {
+	return quotedImportSource(strings.TrimSpace(arguments))
+}
+
+func replaceFirstStringArgument(arguments, id string) (string, error) {
+	start := 0
+	for start < len(arguments) && isSourceSpace(arguments[start]) {
+		start++
+	}
+	if start >= len(arguments) || (arguments[start] != '\'' && arguments[start] != '"') {
+		return "", errors.New("statically hoisted vi.mock requires a string module id")
+	}
+	end := skipSourceString(arguments, start, arguments[start])
+	if end > len(arguments) {
+		return "", errors.New("unterminated mock module id")
+	}
+	return arguments[:start] + fmt.Sprintf("%q", id) + arguments[end:], nil
 }
 
 func quotedImportSource(value string) (string, error) {
