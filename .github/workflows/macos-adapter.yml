@@ -3,16 +3,32 @@ name: macOS WKWebView adapter
 on:
   pull_request:
     paths:
-      - "Package.swift"
-      - "Sources/RushWKWebViewAdapter/**"
-      - "Tests/RushWKWebViewAdapterTests/**"
+      - "cmd/rush/**"
+      - "internal/rush/**"
+      - "internal/wkwebview/**"
+      - "go.mod"
+      - "go.sum"
+      - "src/**"
+      - "package.json"
+      - "package-lock.json"
+      - "Makefile"
+      - "README.md"
+      - "docs/**"
       - ".github/workflows/macos-adapter.yml"
   push:
     branches: [main]
     paths:
-      - "Package.swift"
-      - "Sources/RushWKWebViewAdapter/**"
-      - "Tests/RushWKWebViewAdapterTests/**"
+      - "cmd/rush/**"
+      - "internal/rush/**"
+      - "internal/wkwebview/**"
+      - "go.mod"
+      - "go.sum"
+      - "src/**"
+      - "package.json"
+      - "package-lock.json"
+      - "Makefile"
+      - "README.md"
+      - "docs/**"
       - ".github/workflows/macos-adapter.yml"
 
 permissions:
@@ -24,7 +40,34 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Run shared adapter harness
-        env:
-          SWIFT_BACKTRACE: enable=yes,output-to=stdout,interactive=no
-        run: swift test
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Run Objective-C adapter and Go host tests
+        run: go test ./...
+      - name: Build the normal Rush executable
+        run: go build -o bin/rush ./cmd/rush
+      - name: Verify system-framework-only native linkage
+        run: |
+          links="$(otool -L bin/rush)"
+          echo "$links"
+          if echo "$links" | grep -E 'libwebview|libswift|RushWKWebViewAdapter'; then
+            echo "unexpected external WebView or Swift runtime linkage" >&2
+            exit 1
+          fi
+          echo "$links" | grep '/System/Library/Frameworks/WebKit.framework/'
+      - name: Exercise hidden WKWebView through the normal CLI
+        run: |
+          ./bin/rush doctor
+          ./bin/rush test examples/basic.test.ts examples/browser-api.test.ts examples/javascript.test.js
+          ./bin/rush stop
+      - name: Validate the warm adapter performance contract
+        run: |
+          ./bin/rush bench --repeat 10 --cold-repeat 3 --json
+          ./bin/rush stop

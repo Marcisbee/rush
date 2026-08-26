@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/moxcomic/go-webview"
-	_ "github.com/moxcomic/go-webview/embedded"
 )
 
 type workerPageEvent struct {
@@ -25,7 +24,7 @@ type workerPageEvent struct {
 // commands. A callback crosses the bridge once, then all of its DOM, storage,
 // websocket, and application work executes locally in the client page.
 func RunSessionWorker(headed bool, input io.Reader, output io.Writer) error {
-	view, err := webview.New(headed)
+	view, err := newWebView(headed)
 	if err != nil {
 		return fmt.Errorf("create session WebView: %w", err)
 	}

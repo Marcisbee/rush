@@ -42,7 +42,7 @@ Artifacts are collected after the failed user test stops. Their elapsed time is 
 
 Artifact names include a stable result index plus sanitized suite and test names. Treat DOM snapshots as potentially sensitive application data. CI should upload them only from private runs, use short retention, and never capture secrets or production accounts.
 
-The current Linux CLI does not yet invoke the adapter-independent collector. The macOS and Windows adapter harnesses exercise their native screenshot and DOM capture paths independently.
+The current CLI does not yet invoke the adapter-independent collector. The macOS Objective-C adapter test and Windows adapter harness exercise their native screenshot and DOM capture paths independently.
 
 ## Checked-in GitHub Actions
 
@@ -53,7 +53,7 @@ The current Linux CLI does not yet invoke the adapter-independent collector. The
 - `Windows WebView2 adapter` runs the Windows Go packages and the real WebView2 harness for conformance, warm performance, bridge batching, failure capture, and realm reuse. Trusted `SendInput` remains a separate interactive-desktop validation because hosted runners do not provide reliable keyboard focus.
 - The Linux job uploads raw benchmark JSON for 14 days even when the benchmark command misses a target.
 
-`.github/workflows/macos-adapter.yml` runs `swift test` on macOS for Swift adapter changes and on pushes to `main` that touch the adapter. It validates hidden WKWebView conformance and its performance harness.
+`.github/workflows/macos-adapter.yml` builds the TypeScript runtime and normal Go executable on macOS, runs the Objective-C/cgo adapter tests, executes representative suites through hidden WKWebView realms, and verifies that the executable links WebKit without external WebView or Swift runtime libraries.
 
 A green core job alone is not evidence for a native adapter; use the corresponding real-WebView job or harness result.
 
