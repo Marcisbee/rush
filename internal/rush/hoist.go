@@ -78,7 +78,10 @@ func transformHoistedMocksWithIDs(source string, resolvedIDs map[string]string) 
 	}
 	registrations := make([]string, 0, len(mocks))
 	for _, mock := range mocks {
-		arguments := mock.arguments
+		arguments, rewriteErr := rewriteStaticImportActualCalls(mock.arguments)
+		if rewriteErr != nil {
+			return "", rewriteErr
+		}
 		sourceID, sourceErr := mockModuleID(arguments)
 		if sourceErr != nil {
 			return "", sourceErr
@@ -104,6 +107,101 @@ func transformHoistedMocksWithIDs(source string, resolvedIDs map[string]string) 
 		header += strings.Join(hoistedSources, "\n") + "\n"
 	}
 	return header + strings.Join(registrations, "\n") + "\n" + body, nil
+}
+
+func rewriteStaticImportActualCalls(source string) (string, error) {
+	const method = "vi.importActual"
+	var replacements []sourceReplacement
+	for index := 0; index < len(source); {
+		switch {
+		case source[index] == '\'' || source[index] == '"' || source[index] == '`':
+			index = skipSourceString(source, index, source[index])
+		case strings.HasPrefix(source[index:], "//"):
+			index = skipLineComment(source, index)
+		case strings.HasPrefix(source[index:], "/*"):
+			index = skipBlockComment(source, index)
+		case strings.HasPrefix(source[index:], method) && !isIdentifierByte(byteBefore(source, index)) && !isIdentifierByte(byteAt(source, index+len(method))):
+			cursor := index + len(method)
+			for cursor < len(source) && isSourceSpace(source[cursor]) {
+				cursor++
+			}
+			if cursor < len(source) && source[cursor] == '<' {
+				var err error
+				cursor, err = findClosingTypeArguments(source, cursor)
+				if err != nil {
+					return "", err
+				}
+				for cursor < len(source) && isSourceSpace(source[cursor]) {
+					cursor++
+				}
+			}
+			if cursor >= len(source) || source[cursor] != '(' {
+				index += len(method)
+				continue
+			}
+			close, err := findClosingParenthesis(source, cursor)
+			if err != nil {
+				return "", err
+			}
+			argument, ok := staticStringArgument(source[cursor+1 : close])
+			if ok {
+				replacements = append(replacements, sourceReplacement{
+					start: cursor + 1,
+					end:   close,
+					value: "() => import(" + argument + ")",
+				})
+			}
+			index = close + 1
+		default:
+			index++
+		}
+	}
+	if len(replacements) == 0 {
+		return source, nil
+	}
+	sort.Slice(replacements, func(left, right int) bool { return replacements[left].start > replacements[right].start })
+	result := source
+	for _, replacement := range replacements {
+		result = result[:replacement.start] + replacement.value + result[replacement.end:]
+	}
+	return result, nil
+}
+
+func findClosingTypeArguments(source string, open int) (int, error) {
+	depth := 1
+	for index := open + 1; index < len(source); index++ {
+		switch {
+		case source[index] == '\'' || source[index] == '"' || source[index] == '`':
+			index = skipSourceString(source, index, source[index]) - 1
+		case strings.HasPrefix(source[index:], "//"):
+			index = skipLineComment(source, index) - 1
+		case strings.HasPrefix(source[index:], "/*"):
+			index = skipBlockComment(source, index) - 1
+		case source[index] == '<':
+			depth++
+		case source[index] == '>' && byteBefore(source, index) != '=':
+			depth--
+			if depth == 0 {
+				return index + 1, nil
+			}
+		}
+	}
+	return 0, errors.New("unterminated vi.importActual type arguments")
+}
+
+func staticStringArgument(value string) (string, bool) {
+	trimmed := strings.TrimSpace(value)
+	if strings.HasSuffix(trimmed, ",") {
+		trimmed = strings.TrimSpace(strings.TrimSuffix(trimmed, ","))
+	}
+	if len(trimmed) < 2 || (trimmed[0] != '\'' && trimmed[0] != '"') {
+		return "", false
+	}
+	end := skipSourceString(trimmed, 0, trimmed[0])
+	if end != len(trimmed) {
+		return "", false
+	}
+	return trimmed, true
 }
 
 func transformDependencyImports(source string, resolvedIDs map[string]string) (string, error) {
