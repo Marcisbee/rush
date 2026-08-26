@@ -80,7 +80,7 @@ Snapshot files are not implicitly managed by the Linux proof CLI. Hosts configur
 
 ## Mocks and timers
 
-`vi.fn`, `vi.spyOn`, mock implementation and return helpers, clear/reset/restore helpers, fake timers, system-time control, statically hoisted `vi.mock`, and `vi.hoisted` state used by those factories are supported. Rush initializes hoisted state, registers statically analyzable mocks, and then loads the suite's dependencies before esbuild executes the suite. Dynamic module patterns that depend on Vitest's Node process or plugin container must be rewritten or kept in Vitest.
+`vi.fn`, `vi.spyOn`, `vi.stubGlobal`, mock implementation and return helpers, clear/reset/restore helpers, `vi.unstubAllGlobals`, fake timers, system-time control, statically hoisted `vi.mock`, and `vi.hoisted` state used by those factories are supported. `vi.restoreAllMocks` restores spies without removing ordinary mocks from later `vi.clearAllMocks` or `vi.resetAllMocks` calls. Rush initializes hoisted state, registers statically analyzable mocks, and then loads the suite's dependencies before esbuild executes the suite. Dynamic module patterns that depend on Vitest's Node process or plugin container must be rewritten or kept in Vitest.
 
 Fake timers are restored after each test. File isolation resets the registry and mock runtime independently for every bundled suite.
 
