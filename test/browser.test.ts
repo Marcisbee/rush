@@ -215,6 +215,44 @@ describe("browser API", () => {
     expect(target.greet).toBe(original);
   });
 
+  test("spies on WebKit DOM methods", () => {
+    const button = screen.getByRole("button", { name: "Save changes" });
+    const originalDescriptor = Object.getOwnPropertyDescriptor(button, "focus");
+    const originalMethod = button.focus;
+    const spy = vi.spyOn(button, "focus");
+    const options = { preventScroll: true };
+
+    button.focus(options);
+
+    expect(spy).toHaveBeenCalledWith(options);
+    expect(spy.mock.contexts[0]).toBe(button);
+    expect(button).toHaveFocus();
+    spy.mockRestore();
+    expect(Object.getOwnPropertyDescriptor(button, "focus")).toBe(originalDescriptor);
+    expect(button.focus).toBe(originalMethod);
+  });
+
+  test("spies on callable methods exposed through accessors", () => {
+    const target = { greeting: "hello" } as { greeting: string; greet(name: string, punctuation: string): string };
+    const implementation = function (this: typeof target, name: string, punctuation: string): string {
+      return `${this.greeting} ${name}${punctuation}`;
+    };
+    Object.defineProperty(target, "greet", {
+      configurable: true,
+      enumerable: true,
+      get: () => implementation,
+    });
+    const originalDescriptor = Object.getOwnPropertyDescriptor(target, "greet");
+
+    const spy = vi.spyOn(target, "greet");
+
+    expect(target.greet("Ada", "!")).toBe("hello Ada!");
+    expect(spy).toHaveBeenCalledWith("Ada", "!");
+    expect(spy.mock.contexts[0]).toBe(target);
+    spy.mockRestore();
+    expect(Object.getOwnPropertyDescriptor(target, "greet")).toEqual(originalDescriptor);
+  });
+
   test("runs fake timers without waiting for wall time", () => {
     vi.useFakeTimers({ now: new Date("2026-01-01T00:00:00Z") });
     const callback = vi.fn();
