@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -57,6 +58,79 @@ func sessionWorker(args []string) error {
 	return rush.SessionWorkerMain(*headed)
 }
 
+type keyValueFlags struct {
+	values map[string]string
+	label  string
+	check  func(string, string) error
+}
+
+func (values *keyValueFlags) String() string {
+	items := make([]string, 0, len(values.values))
+	for key, value := range values.values {
+		items = append(items, key+"="+value)
+	}
+	sort.Strings(items)
+	return strings.Join(items, ",")
+}
+
+func (values *keyValueFlags) Set(raw string) error {
+	key, value, ok := strings.Cut(raw, "=")
+	key, value = strings.TrimSpace(key), strings.TrimSpace(value)
+	if !ok || key == "" || value == "" {
+		return fmt.Errorf("%s must use non-empty key=value syntax", values.label)
+	}
+	if values.check != nil {
+		if err := values.check(key, value); err != nil {
+			return err
+		}
+	}
+	if values.values == nil {
+		values.values = make(map[string]string)
+	}
+	values.values[key] = value
+	return nil
+}
+
+type buildFlagValues struct {
+	aliases keyValueFlags
+	loaders keyValueFlags
+}
+
+func newBuildFlagValues() buildFlagValues {
+	return buildFlagValues{
+		aliases: keyValueFlags{label: "alias"},
+		loaders: keyValueFlags{label: "loader", check: func(extension, loader string) error {
+			if !strings.HasPrefix(extension, ".") || len(extension) < 2 {
+				return fmt.Errorf("loader extension %q must start with a dot", extension)
+			}
+			if _, ok := rush.SupportedLoader(loader); !ok {
+				return fmt.Errorf("unsupported loader %q", loader)
+			}
+			return nil
+		}},
+	}
+}
+
+func (values *buildFlagValues) register(set *flag.FlagSet) {
+	set.Var(&values.aliases, "alias", "module=path alias resolved from the project directory (repeatable)")
+	set.Var(&values.loaders, "loader", "extension=loader asset rule (repeatable)")
+}
+
+func (values *buildFlagValues) options() rush.BuilderOptions {
+	return rush.BuilderOptions{Aliases: values.aliases.values, Loaders: values.loaders.values}
+}
+
+func parseBuildFlags(args []string) (rush.BuilderOptions, []string, error) {
+	set := flag.NewFlagSet("rush build options", flag.ContinueOnError)
+	set.SetOutput(io.Discard)
+	values := newBuildFlagValues()
+	values.register(set)
+	if err := set.Parse(args); err != nil {
+		return rush.BuilderOptions{}, nil, err
+	}
+	return values.options(), set.Args(), nil
+}
+
 func runTests(args []string, stdout, stderr io.Writer) (runErr error) {
 	set := flag.NewFlagSet("test", flag.ContinueOnError)
 	set.SetOutput(stderr)
@@ -69,6 +143,8 @@ func runTests(args []string, stdout, stderr io.Writer) (runErr error) {
 	jsonOutput := set.Bool("json", false, "write a machine-readable response")
 	verbose := set.Bool("verbose", false, "show detailed build and browser timing phases")
 	timeout := set.Duration("timeout", 30*time.Second, "timeout for each suite")
+	buildFlags := newBuildFlagValues()
+	buildFlags.register(set)
 	if err := set.Parse(args); err != nil {
 		return err
 	}
@@ -99,7 +175,7 @@ func runTests(args []string, stdout, stderr io.Writer) (runErr error) {
 		host, hostErr := rush.StartHost(*headed, len(files), sessionDemands...)
 		hostReady <- hostResult{host: host, err: hostErr}
 	}()
-	builder := rush.NewBuilder()
+	builder := rush.NewBuilder(buildFlags.options())
 	defer builder.Close()
 	bundles, buildMS, buildErr := builder.BuildBatch(cwd, files)
 	startedHost := <-hostReady

@@ -27,6 +27,7 @@ type Builder struct {
 	contexts       map[string]*buildContext
 	order          []string
 	lastWatchFiles []string
+	options        BuilderOptions
 }
 
 const builderContextCacheLimit = 8
@@ -49,8 +50,22 @@ type packageManifest struct {
 	DevDependencies map[string]string `json:"devDependencies"`
 }
 
-func NewBuilder() *Builder {
-	return &Builder{contexts: make(map[string]*buildContext)}
+// BuilderOptions contains consumer-specific esbuild compatibility settings.
+// Aliases resolve from the consumer working directory. Loader keys are file
+// extensions such as ".svg" and use esbuild loader names such as "text" or
+// "dataurl".
+type BuilderOptions struct {
+	Aliases map[string]string
+	Loaders map[string]string
+}
+
+func NewBuilder(options ...BuilderOptions) *Builder {
+	configured := BuilderOptions{}
+	if len(options) > 0 {
+		configured.Aliases = cloneStrings(options[0].Aliases)
+		configured.Loaders = cloneStrings(options[0].Loaders)
+	}
+	return &Builder{contexts: make(map[string]*buildContext), options: configured}
 }
 
 func (b *Builder) Build(cwd, name string) (string, float64, error) {
@@ -89,7 +104,15 @@ func (b *Builder) BuildBatch(cwd string, names []string) ([]BuiltSuite, float64,
 	if nodeEnvironment == "" {
 		nodeEnvironment = "test"
 	}
-	cacheParts := append([]string{absCWD, jsxImportSource, nodeEnvironment, os.Getenv("RUSH_BROWSER_MODULE")}, absFiles...)
+	viteEnvironment, err := viteEnvironmentJSON(nodeEnvironment)
+	if err != nil {
+		return nil, 0, err
+	}
+	loaders, err := configuredLoaders(b.options.Loaders)
+	if err != nil {
+		return nil, 0, err
+	}
+	cacheParts := append([]string{absCWD, jsxImportSource, nodeEnvironment, viteEnvironment, os.Getenv("RUSH_BROWSER_MODULE")}, absFiles...)
 	cacheKey := strings.Join(cacheParts, "\x00")
 
 	b.mu.Lock()
@@ -186,9 +209,13 @@ func (b *Builder) BuildBatch(cwd string, names []string) ([]BuiltSuite, float64,
 			LogLevel:            api.LogLevelSilent,
 			NodePaths:           []string{filepath.Join(cwd, "node_modules")},
 			External:            []string{"util"},
+			Alias:               cloneStrings(b.options.Aliases),
+			Loader:              loaders,
+			Conditions:          []string{"style", "module"},
 			Plugins:             []api.Plugin{entryPlugin, browserModulePlugin, hoistPlugin},
 			Define: map[string]string{
 				"process.env.NODE_ENV": strconv.Quote(nodeEnvironment),
+				"import.meta.env":      viteEnvironment,
 			},
 		})
 		if ctxErr != nil {
@@ -220,9 +247,6 @@ func (b *Builder) BuildBatch(cwd string, names []string) ([]BuiltSuite, float64,
 		}
 		return nil, elapsed, errors.New(formatMessages(result.Errors))
 	}
-	if len(result.OutputFiles) != len(names) {
-		return nil, elapsed, fmt.Errorf("esbuild returned %d output files for %d suites", len(result.OutputFiles), len(names))
-	}
 	byName := make(map[string][]byte, len(result.OutputFiles))
 	for _, output := range result.OutputFiles {
 		byName[filepath.Base(output.Path)] = output.Contents
@@ -232,6 +256,9 @@ func (b *Builder) BuildBatch(cwd string, names []string) ([]BuiltSuite, float64,
 		contents, exists := byName[fmt.Sprintf("suite-%d.js", index)]
 		if !exists {
 			return nil, elapsed, fmt.Errorf("esbuild omitted output for suite %s", name)
+		}
+		if stylesheet := byName[fmt.Sprintf("suite-%d.css", index)]; len(stylesheet) > 0 {
+			contents = appendSuiteStyle(contents, stylesheet)
 		}
 		digest := sha256.Sum256(contents)
 		outputs[index] = BuiltSuite{File: name, Source: string(contents), Hash: fmt.Sprintf("%x", digest)}
@@ -244,6 +271,15 @@ func (b *Builder) BuildBatch(cwd string, names []string) ([]BuiltSuite, float64,
 	cached.outputs = outputs
 	b.setLastWatchFiles(inputs)
 	return append([]BuiltSuite(nil), outputs...), elapsed, nil
+}
+
+func appendSuiteStyle(source, stylesheet []byte) []byte {
+	result := append([]byte(nil), source...)
+	result = append(result, "\n;(() => { const style = document.createElement(\"style\"); style.setAttribute(\"data-rush-bundle-style\", \"\"); style.textContent = "...)
+	encoded, _ := json.Marshal(string(stylesheet))
+	result = append(result, encoded...)
+	result = append(result, "; document.head.appendChild(style); })();\n"...)
+	return result
 }
 
 func (b *Builder) WatchFiles() []string {
@@ -284,12 +320,15 @@ func buildInputStamps(cwd, metafile string) (map[string]fileStamp, error) {
 	}
 	inputs := make(map[string]fileStamp, len(metadata.Inputs)+2)
 	for name := range metadata.Inputs {
-		if strings.HasPrefix(name, "rush-entry:") || strings.HasPrefix(name, "rush-browser-runtime:") || strings.HasPrefix(name, "(disabled):") {
+		if strings.HasPrefix(name, "rush-entry:") || strings.HasPrefix(name, "rush-browser-runtime:") || strings.HasPrefix(name, "(disabled):") || strings.HasPrefix(name, "<define:") {
 			continue
 		}
 		path := name
+		if suffix := strings.IndexAny(path, "?#"); suffix >= 0 {
+			path = path[:suffix]
+		}
 		if !filepath.IsAbs(path) {
-			path = filepath.Join(cwd, filepath.FromSlash(name))
+			path = filepath.Join(cwd, filepath.FromSlash(path))
 		}
 		info, err := os.Stat(path)
 		if err != nil {
@@ -345,6 +384,93 @@ func detectJSXImportSource(cwd string) string {
 		return "preact"
 	}
 	return "react"
+}
+
+func cloneStrings(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make(map[string]string, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func viteEnvironmentJSON(mode string) (string, error) {
+	values := map[string]any{
+		"MODE":     mode,
+		"BASE_URL": "/",
+		"PROD":     mode == "production",
+		"DEV":      mode != "production",
+		"SSR":      false,
+	}
+	for _, item := range os.Environ() {
+		name, value, ok := strings.Cut(item, "=")
+		if ok && strings.HasPrefix(name, "VITE_") {
+			values[name] = value
+		}
+	}
+	encoded, err := json.Marshal(values)
+	if err != nil {
+		return "", fmt.Errorf("encode Vite environment: %w", err)
+	}
+	return string(encoded), nil
+}
+
+func configuredLoaders(overrides map[string]string) (map[string]api.Loader, error) {
+	loaders := map[string]api.Loader{}
+	for _, extension := range []string{
+		".apng", ".avif", ".bmp", ".cur", ".eot", ".flac", ".gif", ".ico",
+		".jpeg", ".jpg", ".m4a", ".mp3", ".mp4", ".oga", ".ogg", ".opus",
+		".otf", ".pdf", ".png", ".svg", ".ttf", ".wav", ".webm", ".webp",
+		".woff", ".woff2",
+	} {
+		loaders[extension] = api.LoaderDataURL
+	}
+	for extension, name := range overrides {
+		if !strings.HasPrefix(extension, ".") || len(extension) < 2 {
+			return nil, fmt.Errorf("loader extension %q must start with a dot", extension)
+		}
+		loader, ok := SupportedLoader(name)
+		if !ok {
+			return nil, fmt.Errorf("unsupported loader %q for %s", name, extension)
+		}
+		loaders[strings.ToLower(extension)] = loader
+	}
+	return loaders, nil
+}
+
+// SupportedLoader returns loaders that can be embedded entirely in a suite.
+// File and copy loaders are excluded because Rush does not serve emitted build
+// artifacts beside its in-memory browser bundles.
+func SupportedLoader(name string) (api.Loader, bool) {
+	switch name {
+	case "base64":
+		return api.LoaderBase64, true
+	case "binary":
+		return api.LoaderBinary, true
+	case "css":
+		return api.LoaderCSS, true
+	case "dataurl":
+		return api.LoaderDataURL, true
+	case "empty":
+		return api.LoaderEmpty, true
+	case "js":
+		return api.LoaderJS, true
+	case "json":
+		return api.LoaderJSON, true
+	case "jsx":
+		return api.LoaderJSX, true
+	case "text":
+		return api.LoaderText, true
+	case "ts":
+		return api.LoaderTS, true
+	case "tsx":
+		return api.LoaderTSX, true
+	default:
+		return api.LoaderNone, false
+	}
 }
 
 func loaderForPath(path string) api.Loader {
