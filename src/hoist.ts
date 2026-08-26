@@ -50,8 +50,59 @@ export async function transformHoistedMocks(source: string, options: HoistTransf
   const runtimeImport = options.runtimeImport ?? "rush-webtest/internal";
   const runtimeImports = `__rushRegisterMock__, __rushImport__${hoisted.length > 0 ? ", vi as __rushVi" : ""}`;
   const hoistedSource = hoisted.map((declaration) => rewriteHoistedVI(declaration.source)).join("\n");
-  const header = `import { ${runtimeImports} } from ${JSON.stringify(runtimeImport)};\n${hoistedSource}${hoistedSource ? "\n" : ""}${mocks.map((mock) => `__rushRegisterMock__(${mock.argumentsSource});`).join("\n")}\n`;
+  const header = `import { ${runtimeImports} } from ${JSON.stringify(runtimeImport)};\n${hoistedSource}${hoistedSource ? "\n" : ""}${mocks.map((mock) => `__rushRegisterMock__(${rewriteStaticImportActualCalls(mock.argumentsSource)});`).join("\n")}\n`;
   return header + applyReplacements(source, replacements);
+}
+
+function rewriteStaticImportActualCalls(source: string): string {
+  const method = "vi.importActual";
+  const replacements: Replacement[] = [];
+  let index = 0;
+  while (index < source.length) {
+    const character = source[index];
+    if (character === "\"" || character === "'" || character === "`") { index = skipString(source, index, character); continue; }
+    if (character === "/" && source[index + 1] === "/") { index = source.indexOf("\n", index + 2); if (index === -1) break; continue; }
+    if (character === "/" && source[index + 1] === "*") { const end = source.indexOf("*/", index + 2); index = end === -1 ? source.length : end + 2; continue; }
+    if (!source.startsWith(method, index) || isIdentifier(source[index - 1]) || isIdentifier(source[index + method.length])) {
+      index += 1;
+      continue;
+    }
+
+    let open = index + method.length;
+    while (/\s/.test(source[open] ?? "")) open += 1;
+    if (source[open] === "<") {
+      open = findClosingTypeArguments(source, open);
+      while (/\s/.test(source[open] ?? "")) open += 1;
+    }
+    if (source[open] !== "(") { index += method.length; continue; }
+    const close = findClosingParenthesis(source, open);
+    const argument = staticStringArgument(source.slice(open + 1, close));
+    if (argument !== undefined) {
+      replacements.push({ start: open + 1, end: close, value: `() => import(${argument})` });
+    }
+    index = close + 1;
+  }
+  return applyReplacements(source, replacements);
+}
+
+function findClosingTypeArguments(source: string, open: number): number {
+  let depth = 1;
+  for (let index = open + 1; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === "\"" || character === "'" || character === "`") { index = skipString(source, index, character) - 1; continue; }
+    if (character === "/" && source[index + 1] === "/") { const end = source.indexOf("\n", index + 2); index = end === -1 ? source.length : end; continue; }
+    if (character === "/" && source[index + 1] === "*") { const end = source.indexOf("*/", index + 2); index = end === -1 ? source.length : end + 1; continue; }
+    if (character === "<") depth += 1;
+    if (character === ">" && source[index - 1] !== "=" && --depth === 0) return index + 1;
+  }
+  throw new Error("Unterminated vi.importActual type arguments");
+}
+
+function staticStringArgument(value: string): string | undefined {
+  let trimmed = value.trim();
+  if (trimmed.endsWith(",")) trimmed = trimmed.slice(0, -1).trimEnd();
+  if (trimmed[0] !== "\"" && trimmed[0] !== "'") return undefined;
+  return skipString(trimmed, 0, trimmed[0]) === trimmed.length ? trimmed : undefined;
 }
 
 function rewriteImport(statement: string, sourceId: string): string {
