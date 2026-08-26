@@ -49,7 +49,7 @@ export interface TestAPI<TContext extends TestContext = TestContext> {
   skip: TestAPI<TContext>;
   only: TestAPI<TContext>;
   todo(name: string): void;
-  each<T extends readonly unknown[]>(cases: readonly T[]): (name: string, callback: (...values: [...T]) => Awaitable<void>) => void;
+  each<T>(cases: readonly T[]): (name: string, callback: (...values: EachArguments<T>) => Awaitable<void>) => void;
   browser: TestAPI<BrowserContext>;
   app: TestAPI<AppContext>;
   session: SessionTestAPI;
@@ -63,8 +63,10 @@ export interface DescribeAPI {
   (name: string, callback: () => void): void;
   skip: DescribeAPI;
   only: DescribeAPI;
-  each<T extends readonly unknown[]>(cases: readonly T[]): (name: string, callback: (...values: [...T]) => void) => void;
+  each<T>(cases: readonly T[]): (name: string, callback: (...values: EachArguments<T>) => void) => void;
 }
+
+type EachArguments<T> = T extends readonly unknown[] ? [...T] : [T];
 
 let sequence = 0;
 let root = createRoot();
@@ -100,14 +102,14 @@ function makeTest(mode: TestMode = "run", model: TestModel = "browser", sessionO
   const callable = ((name: string, callback?: TestCallback) => registerTest(mode, model, sessionOptions, name, callback)) as TestAPI;
   callable.todo = (name) => registerTest("todo", model, sessionOptions, name);
   callable.each = (cases) => (name, callback) => {
-    cases.forEach((values, index) => registerTest(mode, model, sessionOptions, formatEachName(name, values, index), () => callback(...values)));
+    cases.forEach((row, index) => registerTest(mode, model, sessionOptions, formatEachName(name, row, index), () => callback(...eachArguments(row))));
   };
   const session = ((nameOrOptions: string | SessionOptions, callback?: TestCallback) => {
     if (typeof nameOrOptions === "object") return makeTest(mode, "session", nameOrOptions);
     return registerTest(mode, "session", sessionOptions, nameOrOptions, callback);
   }) as SessionTestAPI;
   session.todo = (name) => registerTest("todo", "session", sessionOptions, name);
-  session.each = (cases) => (name, callback) => cases.forEach((values, index) => registerTest(mode, "session", sessionOptions, formatEachName(name, values, index), () => callback(...values)));
+  session.each = (cases) => (name, callback) => cases.forEach((row, index) => registerTest(mode, "session", sessionOptions, formatEachName(name, row, index), () => callback(...eachArguments(row))));
   Object.defineProperties(session, {
     skip: { get: () => mode === "skip" ? session : makeTest("skip", "session", sessionOptions).session },
     only: { get: () => mode === "only" ? session : makeTest("only", "session", sessionOptions).session },
@@ -141,7 +143,7 @@ function makeDescribe(mode: Exclude<TestMode, "todo"> = "run"): DescribeAPI {
     currentSuite = suite;
     try { callback(); } finally { currentSuite = parent; }
   }) as DescribeAPI;
-  callable.each = (cases) => (name, callback) => cases.forEach((values, index) => callable(formatEachName(name, values, index), () => callback(...values)));
+  callable.each = (cases) => (name, callback) => cases.forEach((row, index) => callable(formatEachName(name, row, index), () => callback(...eachArguments(row))));
   Object.defineProperties(callable, {
     skip: { get: () => mode === "skip" ? callable : makeDescribe("skip") },
     only: { get: () => mode === "only" ? callable : makeDescribe("only") },
@@ -149,10 +151,28 @@ function makeDescribe(mode: Exclude<TestMode, "todo"> = "run"): DescribeAPI {
   return callable;
 }
 
-function formatEachName(name: string, values: readonly unknown[], index: number): string {
+function eachArguments<T>(row: T): EachArguments<T> {
+  return (Array.isArray(row) ? row : [row]) as EachArguments<T>;
+}
+
+function formatEachName(name: string, row: unknown, index: number): string {
+  const values = eachArguments(row);
   let cursor = 0;
-  const formatted = name.replace(/%[sidjo]/g, () => String(values[cursor++]));
-  return formatted === name ? `${name} ${index}` : formatted;
+  let replaced = false;
+  let formatted = name.replace(/%[sidjo]/g, () => {
+    replaced = true;
+    return String(values[cursor++]);
+  });
+  formatted = formatted.replace(/\$([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/g, (placeholder, path: string) => {
+    let value = row;
+    for (const property of path.split(".")) {
+      if (value === null || (typeof value !== "object" && typeof value !== "function") || !(property in value)) return placeholder;
+      value = (value as Record<string, unknown>)[property];
+    }
+    replaced = true;
+    return String(value);
+  });
+  return replaced ? formatted : `${name} ${index}`;
 }
 
 export const test = makeTest();
