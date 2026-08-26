@@ -31,7 +31,7 @@ type Server struct {
 	nextID   atomic.Uint64
 }
 
-func RunHost(socket string, headed bool, suiteCount int, ready, lifetime *os.File) error {
+func RunHost(socket string, headed bool, suiteCount int, sessionDemands []int, ready, lifetime *os.File) error {
 	started := time.Now()
 	if directory, ok := scopedHostDirectory(socket); ok {
 		defer os.RemoveAll(directory)
@@ -70,7 +70,7 @@ func RunHost(socket string, headed bool, suiteCount int, ready, lifetime *os.Fil
 		writeReady(ready, err)
 		return err
 	}
-	browser, err := NewBrowserPool(headed, poolSize)
+	browser, err := NewBrowserPool(headed, poolSize, sessionDemands...)
 	if err != nil {
 		writeReady(ready, err)
 		return err

@@ -86,13 +86,17 @@ func runTests(args []string, stdout, stderr io.Writer) (runErr error) {
 	if err != nil {
 		return err
 	}
+	sessionDemands, err := detectSessionDemands(files)
+	if err != nil {
+		return err
+	}
 	type hostResult struct {
 		host *rush.Host
 		err  error
 	}
 	hostReady := make(chan hostResult, 1)
 	go func() {
-		host, hostErr := rush.StartHost(*headed, len(files))
+		host, hostErr := rush.StartHost(*headed, len(files), sessionDemands...)
 		hostReady <- hostResult{host: host, err: hostErr}
 	}()
 	builder := rush.NewBuilder()
@@ -224,6 +228,7 @@ func nativeHost(args []string) error {
 	socket := set.String("socket", "", "host socket")
 	headed := set.Bool("headed", false, "show the browser")
 	suiteCount := set.Int("suite-count", 0, "number of suites in the invoking command")
+	sessionDemand := set.String("session-demand", "", "comma-separated session clients required by each suite")
 	if err := set.Parse(args); err != nil {
 		return err
 	}
@@ -246,7 +251,27 @@ func nativeHost(args []string) error {
 		}
 		lifetime = os.NewFile(uintptr(fd), "rush-lifetime")
 	}
-	return rush.RunHost(*socket, *headed, *suiteCount, ready, lifetime)
+	demands, err := parseSessionDemands(*sessionDemand)
+	if err != nil {
+		return err
+	}
+	return rush.RunHost(*socket, *headed, *suiteCount, demands, ready, lifetime)
+}
+
+func parseSessionDemands(value string) ([]int, error) {
+	if value == "" {
+		return nil, nil
+	}
+	parts := strings.Split(value, ",")
+	demands := make([]int, len(parts))
+	for index, part := range parts {
+		demand, err := strconv.Atoi(part)
+		if err != nil || demand < 0 || demand > 4 {
+			return nil, fmt.Errorf("invalid session demand %q", part)
+		}
+		demands[index] = demand
+	}
+	return demands, nil
 }
 
 func doctor(output io.Writer) error {

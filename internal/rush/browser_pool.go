@@ -56,13 +56,14 @@ func configuredBrowserPoolSize(headed bool, value string, suiteCount ...int) (in
 	return capToSuites(size), nil
 }
 
-func NewBrowserPool(headed bool, size int) (*BrowserPool, error) {
+func NewBrowserPool(headed bool, size int, sessionDemands ...int) (*BrowserPool, error) {
 	if size < 1 || size > maxBrowserPoolSize {
 		return nil, fmt.Errorf("browser pool size must be between 1 and %d", maxBrowserPoolSize)
 	}
+	sessionWarmCounts := sessionWarmCountsByRealm(size, sessionDemands)
 	realms := make([]browserRealm, 0, size)
 	for index := 0; index < size; index++ {
-		browser, err := NewBrowser(headed)
+		browser, err := NewBrowser(headed, sessionWarmCounts[index])
 		if err != nil {
 			for _, realm := range realms {
 				realm.Close()
@@ -79,6 +80,15 @@ func NewBrowserPool(headed bool, size int) (*BrowserPool, error) {
 		close(pool.ready)
 	}()
 	return pool, nil
+}
+
+func sessionWarmCountsByRealm(realmCount int, suiteDemands []int) []int {
+	counts := make([]int, realmCount)
+	for suiteIndex, demand := range suiteDemands {
+		realm := suiteIndex % realmCount
+		counts[realm] = max(counts[realm], demand)
+	}
+	return counts
 }
 
 func (p *BrowserPool) Ready() <-chan struct{} { return p.ready }

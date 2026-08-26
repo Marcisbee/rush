@@ -30,7 +30,7 @@ type Host struct {
 	closeErr  error
 }
 
-func StartHost(headed bool, suiteCount int) (*Host, error) {
+func StartHost(headed bool, suiteCount int, sessionDemands ...int) (*Host, error) {
 	if headed && !SupportsHeaded() {
 		return nil, fmt.Errorf("the %s adapter is headless-only; use the default WebKitGTK build for headed debugging", BackendName())
 	}
@@ -50,7 +50,7 @@ func StartHost(headed bool, suiteCount int) (*Host, error) {
 		directory: directory,
 		wait:      make(chan error, 1),
 	}
-	if err := host.start(headed, suiteCount); err != nil {
+	if err := host.start(headed, suiteCount, sessionDemands); err != nil {
 		_ = os.RemoveAll(directory)
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func createHostDirectory() (string, error) {
 	return os.MkdirTemp(root, "host-")
 }
 
-func (h *Host) start(headed bool, suiteCount int) error {
+func (h *Host) start(headed bool, suiteCount int, sessionDemands []int) error {
 	executable, err := os.Executable()
 	if err != nil {
 		return err
@@ -91,6 +91,13 @@ func (h *Host) start(headed bool, suiteCount int) error {
 	}
 	if suiteCount > 0 {
 		args = append(args, "--suite-count", strconv.Itoa(suiteCount))
+	}
+	if len(sessionDemands) > 0 {
+		values := make([]string, len(sessionDemands))
+		for index, demand := range sessionDemands {
+			values[index] = strconv.Itoa(demand)
+		}
+		args = append(args, "--session-demand", strings.Join(values, ","))
 	}
 	command := exec.Command(executable, args...)
 	command.ExtraFiles = []*os.File{readyWriter, lifetimeReader}

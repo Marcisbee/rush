@@ -66,6 +66,8 @@ test.session({ clients: ["alice", "bob"] })("isolates clients", async ({ client 
 
 Named clients remain stable for the test and expose `page`, `url`, `goto`, and `evaluate`. The Linux session runtime pools a bounded number of WebViews, gives clients independent WebKit profiles, storage, and browser state, and resets them before reuse.
 
+For statically declared `test.session` calls in selected entry files, the CLI starts only the required number of session workers while the main browser host and suite bundles initialize. Demands are mapped to the same browser realms that will execute those files. Dynamic or imported session registrations remain supported and create any missing workers on demand.
+
 Use session tests only when concurrent browser identity is observable. Do not model ordinary parallel assertions as clients, and do not share application state through the test-realm closure when the behavior is meant to cross a real server or WebSocket.
 
 ## Synthetic versus trusted input
