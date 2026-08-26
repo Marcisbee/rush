@@ -32,6 +32,8 @@ jobs:
       - run: npm ci --ignore-scripts
       - name: Check browser API types
         run: npm run check
+      - name: Test release automation
+        run: npm run check:release
       - name: Build browser API
         run: npm run build
       - name: Test native host contracts for races
