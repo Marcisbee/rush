@@ -204,6 +204,17 @@ describe("browser API", () => {
     expect(disabledButton).not.toBeEnabled();
   });
 
+  test("supports asymmetric attribute expectations", () => {
+    const link = document.createElement("a");
+    link.setAttribute("href", "/icons.svg#phosphor-Rocket");
+
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "M14 2a1 1 0 0 1 .8.4");
+
+    expect(link).toHaveAttribute("href", expect.stringContaining("#phosphor-Rocket"));
+    expect(path).toHaveAttribute("d", expect.stringContaining("M14 2a1 1"));
+  });
+
   test("spies on and restores methods", () => {
     const target = { greet(name: string) { return `hello ${name}`; } };
     const original = target.greet;
