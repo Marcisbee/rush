@@ -97,23 +97,18 @@ Every test imports the working package name:
 import { expect, test } from "rush-webtest";
 ```
 
-The Linux builder resolves that import in this order:
+The npm package provides declarations for TypeScript and editors. Production native binaries embed the browser implementation built from the same release, so suite bundles reference one already-loaded runtime instead of copying Testing Library, fake timers, and Rush internals into every file.
 
-1. `RUSH_BROWSER_MODULE`.
-2. `<consumer>/node_modules/rush-webtest/dist/index.js`.
-3. `<consumer>/dist/index.js`.
-4. `dist/index.js` adjacent to the Rush binary's parent directory.
-
-For local development against an unpublished browser API build, set an absolute `RUSH_BROWSER_MODULE` path instead of relying on a global symlink.
+For local development against an unpublished browser API build, set `RUSH_BROWSER_MODULE` to its absolute `dist/index.js` path. That explicit override is bundled with the suite.
 
 ## Environment configuration
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `RUSH_BROWSER_MODULE` | Absolute path to a locally built browser API | Resolver search above |
+| `RUSH_BROWSER_MODULE` | Absolute path to a locally built browser API override | Native binary's embedded runtime |
 | `RUSH_JSX_IMPORT_SOURCE` | Overrides automatic JSX runtime selection | React if declared, otherwise Preact if it alone is declared, otherwise React |
 | `RUSH_NODE_ENV` | Compile-time value of `process.env.NODE_ENV` in suites | `test` |
-| `RUSH_WEBVIEW_POOL_SIZE` | Number of reusable Linux or macOS browser realms, from one through four | Up to three hidden; one headed |
+| `RUSH_WEBVIEW_POOL_SIZE` | Explicit number of reusable Linux or macOS browser realms, from one through four | Up to three hidden, capped by file count; one headed |
 | `DISPLAY` / `WAYLAND_DISPLAY` | Select the existing desktop for `--headed` | Rush-managed Xvfb in headless Linux mode |
 
 `RUSH_READY_FD` and `RUSH_LIFETIME_FD` are internal host lifecycle channels and are not user configuration.

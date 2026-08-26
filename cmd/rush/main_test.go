@@ -73,6 +73,7 @@ func TestFailureFormatterCompactsTestingLibraryDiagnostics(t *testing.T) {
 		"  <button />\n\n" +
 		"Ignored nodes: comments, script, style\n" +
 		"<body>\n  <main />\n</body>\n" +
+		"matcher@http://127.0.0.1:1234/__rush/controller:71:100\n" +
 		"getElementError@\n@\nrunTest@\n"
 	got := strings.Join(formatFailure(raw), "\n")
 	want := "TestingLibraryElementError: Unable to find button\n\n" +

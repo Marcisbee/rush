@@ -44,7 +44,7 @@ func runBenchmarks(args []string, output io.Writer) (runErr error) {
 	results := make([]benchmarkResult, 0, 6)
 	coldSamples := make([]float64, 0, *coldRepeat)
 	for i := 0; i < *coldRepeat; i++ {
-		host, err := rush.StartHost(false)
+		host, err := rush.StartHost(false, 1)
 		if err != nil {
 			return err
 		}
@@ -60,7 +60,7 @@ func runBenchmarks(args []string, output io.Writer) (runErr error) {
 	}
 	coldMedian := median(coldSamples)
 	results = append(results, benchmarkResult{Name: "cold startup", Metric: "host-to-page-ready", TargetMS: 2000, SamplesMS: coldSamples, MedianMS: coldMedian, Passed: coldMedian < 2000, Measurement: "native process start through " + rush.BackendName() + " bridge readiness; excludes build and user test time"})
-	warmHost, err := rush.StartHost(false)
+	warmHost, err := rush.StartHost(false, 1)
 	if err != nil {
 		return err
 	}

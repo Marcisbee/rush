@@ -160,3 +160,24 @@ func TestBuilderResolvesBrowserModuleForExternalSuite(t *testing.T) {
 		t.Fatal("external suite was not included in bundle")
 	}
 }
+
+func TestBuilderKeepsSharedBrowserRuntimeOutOfSuiteBundles(t *testing.T) {
+	t.Setenv("RUSH_BROWSER_MODULE", "")
+	directory := t.TempDir()
+	suite := filepath.Join(directory, "small.test.ts")
+	if err := os.WriteFile(suite, []byte("import { expect, test } from 'rush-webtest'; test('small', () => expect(1).toBe(1))"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	builder := NewBuilder()
+	defer builder.Close()
+	bundle, _, err := builder.Build(directory, suite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bundle) > 50_000 {
+		t.Fatalf("suite bundle still contains shared browser runtime: %d bytes", len(bundle))
+	}
+	if strings.Contains(bundle, "TestingLibraryElementError") {
+		t.Fatal("suite bundle contains Testing Library implementation")
+	}
+}

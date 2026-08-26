@@ -57,7 +57,7 @@ Rush starts an authenticated Xvfb display for each headless command and removes 
 ./bin/rush test --headed examples/browser-api.test.ts
 ```
 
-Rush resolves `rush-webtest` from the consumer project's `node_modules`. `RUSH_BROWSER_MODULE` remains available for local development against an unpublished browser API build.
+The native binary embeds the matching `rush-webtest` browser runtime, while the npm package supplies TypeScript declarations and editor resolution. `RUSH_BROWSER_MODULE` remains available for local development against an unpublished browser API build.
 
 ## Test models
 
@@ -79,7 +79,7 @@ App tests use real navigation through Rush's loopback proxy, request interceptio
 
 ## Isolation and performance
 
-Hidden Linux and macOS commands use up to three browser realms by default; `RUSH_WEBVIEW_POOL_SIZE` selects one through four realms. Watch mode reuses those realms between reruns. Each file receives its own esbuild bundle, module graph, registry, and mock runtime. Before reuse, Rush clears DOM and style state, timers, listeners, cookies, local and session storage, IndexedDB, Cache Storage, service workers, performance entries, and bundle globals.
+Hidden Linux and macOS commands use up to three browser realms by default, but never create more realms than the selected test files require; `RUSH_WEBVIEW_POOL_SIZE` selects one through four realms explicitly. Watch mode reuses those realms between reruns. The CLI builds while the native browser starts, and immutable Rush framework code is loaded once per realm instead of being copied into every suite. Each file still receives its own esbuild bundle, application module graph, registry, and mock runtime. Before reuse, Rush clears DOM and style state, timers, listeners, cookies, local and session storage, IndexedDB, Cache Storage, service workers, performance entries, and bundle globals.
 
 The benchmark command validates pass counts and the declared product targets from raw repeated samples:
 

@@ -102,7 +102,7 @@ Linux assigns files deterministically across a bounded warm WebView pool. Before
 
 The native response reports:
 
-- `build`: host-side incremental esbuild work.
+- `build`: CLI-side incremental esbuild work, overlapped with cold browser startup on the initial run.
 - `runner`: page registration and orchestration outside hooks and test callbacks.
 - `application`: callback wall time after observed network duration and completed requested timer delays are subtracted.
 - `network`: WebKit resource-timing duration observed during the suite.

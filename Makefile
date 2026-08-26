@@ -4,6 +4,7 @@ NPM ?= npm
 
 build:
 	$(NPM) run build
+	go generate ./internal/rush
 	mkdir -p bin
 	go build -o bin/rush ./cmd/rush
 

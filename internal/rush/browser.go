@@ -51,7 +51,7 @@ func NewBrowser(headed bool) (*Browser, error) {
 	mux.HandleFunc(browserControllerPath, func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Cache-Control", "no-store")
 		response.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = response.Write([]byte(runtimeHTML))
+		_, _ = response.Write([]byte(browserControllerHTML))
 	})
 	mux.HandleFunc("/__rush/timing", func(response http.ResponseWriter, request *http.Request) {
 		time.Sleep(10 * time.Millisecond)

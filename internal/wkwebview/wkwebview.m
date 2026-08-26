@@ -77,23 +77,22 @@ rush_wk_view *rush_wk_create(int debug, uintptr_t handle) {
   if (@available(macOS 13.3, *)) {
     webview.inspectable = YES;
   }
-  NSWindow *window = [[NSWindow alloc]
-      initWithContentRect:frame
-                styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-                           NSWindowStyleMaskResizable | NSWindowStyleMaskMiniaturizable)
-                  backing:NSBackingStoreBuffered
-                    defer:NO];
-  window.contentView = webview;
+  NSWindow *window = nil;
   if (debug) {
+    window = [[NSWindow alloc]
+        initWithContentRect:frame
+                  styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+                             NSWindowStyleMaskResizable | NSWindowStyleMaskMiniaturizable)
+                    backing:NSBackingStoreBuffered
+                      defer:NO];
+    window.contentView = webview;
     [window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
-  } else {
-    [window orderOut:nil];
   }
 
   rush_wk_view *view = calloc(1, sizeof(rush_wk_view));
   if (view == NULL) {
-    [window close];
+    if (window != nil) [window close];
     return NULL;
   }
   view->window = (__bridge_retained void *)window;
@@ -162,7 +161,7 @@ void rush_wk_set_size(rush_wk_view *view, int width, int height, int hint) {
   (void)hint;
   rush_on_main(^{
     NSWindow *window = rush_window(view);
-    [window setContentSize:NSMakeSize(width, height)];
+    if (window != nil) [window setContentSize:NSMakeSize(width, height)];
     rush_webview(view).frame = NSMakeRect(0, 0, width, height);
   });
 }

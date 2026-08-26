@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -29,7 +30,7 @@ type Host struct {
 	closeErr  error
 }
 
-func StartHost(headed bool) (*Host, error) {
+func StartHost(headed bool, suiteCount int) (*Host, error) {
 	if headed && !SupportsHeaded() {
 		return nil, fmt.Errorf("the %s adapter is headless-only; use the default WebKitGTK build for headed debugging", BackendName())
 	}
@@ -49,7 +50,7 @@ func StartHost(headed bool) (*Host, error) {
 		directory: directory,
 		wait:      make(chan error, 1),
 	}
-	if err := host.start(headed); err != nil {
+	if err := host.start(headed, suiteCount); err != nil {
 		_ = os.RemoveAll(directory)
 		return nil, err
 	}
@@ -68,7 +69,7 @@ func createHostDirectory() (string, error) {
 	return os.MkdirTemp(root, "host-")
 }
 
-func (h *Host) start(headed bool) error {
+func (h *Host) start(headed bool, suiteCount int) error {
 	executable, err := os.Executable()
 	if err != nil {
 		return err
@@ -87,6 +88,9 @@ func (h *Host) start(headed bool) error {
 	args := []string{"__host", "--socket", h.socket}
 	if headed {
 		args = append(args, "--headed")
+	}
+	if suiteCount > 0 {
+		args = append(args, "--suite-count", strconv.Itoa(suiteCount))
 	}
 	command := exec.Command(executable, args...)
 	command.ExtraFiles = []*os.File{readyWriter, lifetimeReader}

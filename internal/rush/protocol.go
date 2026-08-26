@@ -3,10 +3,13 @@ package rush
 import "time"
 
 type Request struct {
-	Action  string   `json:"action"`
-	CWD     string   `json:"cwd,omitempty"`
-	Files   []string `json:"files,omitempty"`
-	Timeout int64    `json:"timeout_ms,omitempty"`
+	Action     string       `json:"action"`
+	CWD        string       `json:"cwd,omitempty"`
+	Files      []string     `json:"files,omitempty"`
+	Bundles    []BuiltSuite `json:"bundles,omitempty"`
+	BuildMS    float64      `json:"build_ms,omitempty"`
+	WatchFiles []string     `json:"watch_files,omitempty"`
+	Timeout    int64        `json:"timeout_ms,omitempty"`
 }
 
 type Timing struct {

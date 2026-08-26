@@ -188,6 +188,9 @@ func formatFailure(value string) []string {
 	formatted := make([]string, 0, len(lines))
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
+		if strings.Contains(trimmed, "/__rush/controller:") || isUselessWebKitFrame(trimmed) {
+			continue
+		}
 		if trimmed == "Here are the accessible roles:" {
 			accessible = true
 			line = "Accessible roles:"

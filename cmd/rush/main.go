@@ -86,10 +86,26 @@ func runTests(args []string, stdout, stderr io.Writer) (runErr error) {
 	if err != nil {
 		return err
 	}
-	host, err := rush.StartHost(*headed)
-	if err != nil {
-		return err
+	type hostResult struct {
+		host *rush.Host
+		err  error
 	}
+	hostReady := make(chan hostResult, 1)
+	go func() {
+		host, hostErr := rush.StartHost(*headed, len(files))
+		hostReady <- hostResult{host: host, err: hostErr}
+	}()
+	builder := rush.NewBuilder()
+	defer builder.Close()
+	bundles, buildMS, buildErr := builder.BuildBatch(cwd, files)
+	startedHost := <-hostReady
+	if startedHost.err != nil {
+		if startedHost.host != nil {
+			_ = startedHost.host.Close()
+		}
+		return errors.Join(startedHost.err, buildErr)
+	}
+	host := startedHost.host
 	defer func() {
 		if closeErr := host.Close(); closeErr != nil {
 			runErr = errors.Join(runErr, closeErr)
@@ -105,8 +121,17 @@ func runTests(args []string, stdout, stderr io.Writer) (runErr error) {
 			_ = host.Close()
 		}()
 	}
-	request := rush.Request{Action: "run", CWD: cwd, Files: files, Timeout: timeout.Milliseconds()}
-	response, err := host.Send(request)
+	request := rush.Request{
+		Action: "run", CWD: cwd, Files: files, Bundles: bundles, BuildMS: buildMS,
+		WatchFiles: builder.WatchFiles(), Timeout: timeout.Milliseconds(),
+	}
+	var response rush.Response
+	if buildErr != nil {
+		err = buildErr
+		response.WatchFiles = builder.WatchFiles()
+	} else {
+		response, err = host.Send(request)
+	}
 	if *watch && watchContext.Err() != nil {
 		return nil
 	}
@@ -139,6 +164,15 @@ func runTests(args []string, stdout, stderr io.Writer) (runErr error) {
 			return waitErr
 		}
 		printWatchChange(stdout, displayPath(cwd, changed), console)
+		bundles, buildMS, err = builder.BuildBatch(cwd, files)
+		if err != nil {
+			fmt.Fprintln(stderr, "rush:", err)
+			watched = mergeWatchFiles(cwd, files, builder.WatchFiles())
+			continue
+		}
+		request.Bundles = bundles
+		request.BuildMS = buildMS
+		request.WatchFiles = builder.WatchFiles()
 		response, err = host.Send(request)
 		if watchContext.Err() != nil {
 			return nil
@@ -189,6 +223,7 @@ func nativeHost(args []string) error {
 	set := flag.NewFlagSet("__host", flag.ContinueOnError)
 	socket := set.String("socket", "", "host socket")
 	headed := set.Bool("headed", false, "show the browser")
+	suiteCount := set.Int("suite-count", 0, "number of suites in the invoking command")
 	if err := set.Parse(args); err != nil {
 		return err
 	}
@@ -211,7 +246,7 @@ func nativeHost(args []string) error {
 		}
 		lifetime = os.NewFile(uintptr(fd), "rush-lifetime")
 	}
-	return rush.RunHost(*socket, *headed, ready, lifetime)
+	return rush.RunHost(*socket, *headed, *suiteCount, ready, lifetime)
 }
 
 func doctor(output io.Writer) error {

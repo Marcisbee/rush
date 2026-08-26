@@ -30,7 +30,7 @@ type Server struct {
 	nextID  atomic.Uint64
 }
 
-func RunHost(socket string, headed bool, ready, lifetime *os.File) error {
+func RunHost(socket string, headed bool, suiteCount int, ready, lifetime *os.File) error {
 	started := time.Now()
 	if directory, ok := scopedHostDirectory(socket); ok {
 		defer os.RemoveAll(directory)
@@ -64,7 +64,7 @@ func RunHost(socket string, headed bool, ready, lifetime *os.File) error {
 		return err
 	}
 
-	poolSize, err := configuredBrowserPoolSize(headed, os.Getenv("RUSH_WEBVIEW_POOL_SIZE"))
+	poolSize, err := configuredBrowserPoolSize(headed, os.Getenv("RUSH_WEBVIEW_POOL_SIZE"), suiteCount)
 	if err != nil {
 		writeReady(ready, err)
 		return err
@@ -328,12 +328,17 @@ func (s *Server) run(request Request) Response {
 	if request.Timeout > 0 {
 		timeout = time.Duration(request.Timeout) * time.Millisecond
 	}
-	bundles, buildMS, err := s.builder.BuildBatch(request.CWD, request.Files)
-	response.WatchFiles = s.builder.WatchFiles()
-	if err != nil {
-		response.Error = err.Error()
-		response.WallMS = milliseconds(time.Since(started))
-		return response
+	bundles, buildMS := request.Bundles, request.BuildMS
+	response.WatchFiles = append([]string(nil), request.WatchFiles...)
+	if len(bundles) == 0 {
+		var err error
+		bundles, buildMS, err = s.builder.BuildBatch(request.CWD, request.Files)
+		response.WatchFiles = s.builder.WatchFiles()
+		if err != nil {
+			response.Error = err.Error()
+			response.WallMS = milliseconds(time.Since(started))
+			return response
+		}
 	}
 	response.Profile.BundleMS = buildMS
 	browserStarted := time.Now()
