@@ -1,4 +1,4 @@
-//go:build !rush_wpe && !darwin
+//go:build !rush_wpe && !rush_lightpanda && !darwin
 
 package rush
 

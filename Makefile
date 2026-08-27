@@ -1,4 +1,4 @@
-.PHONY: build build-wpe test test-static test-browser bench clean
+.PHONY: build build-lightpanda build-wpe test test-static test-browser bench clean
 
 NPM ?= npm
 
@@ -13,6 +13,10 @@ build-wpe:
 	mkdir -p bin/wpe
 	$(CC) -shared -fPIC -O2 -o bin/wpe/libwebview.so native/wpe/webview.c $$(pkg-config --cflags --libs wpe-webkit-2.0 wpe-platform-headless-2.0)
 	go build -tags rush_wpe -o bin/wpe/rush ./cmd/rush
+
+build-lightpanda:
+	mkdir -p bin/lightpanda
+	go build -tags rush_lightpanda -o bin/lightpanda/rush ./cmd/rush
 
 test: test-static test-browser
 

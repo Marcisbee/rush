@@ -113,6 +113,7 @@ Vite-style image, font, and media imports are embedded as data URLs. Imported CS
 - [Publishing releases](docs/releasing.md)
 - [Windows WebView2 setup and validation](docs/windows-webview2.md)
 - [WPE WebKit evaluation](docs/wpe-evaluation.md)
+- [Lightpanda nightly evaluation](docs/lightpanda-evaluation.md)
 - [macOS WKWebView build and validation](docs/macos-wkwebview.md)
 
 ## Repository layout

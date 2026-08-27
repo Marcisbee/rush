@@ -335,9 +335,9 @@ const runtimeHTML = `<!doctype html>
     document.body.replaceChildren();
     document.querySelectorAll("head style, head link[rel=stylesheet]").forEach(node => node.remove());
     await clearOriginStorage();
-    performance.clearMarks();
-    performance.clearMeasures();
-    performance.clearResourceTimings();
+    performance.clearMarks?.();
+    performance.clearMeasures?.();
+    performance.clearResourceTimings?.();
     if (baselineGlobals) {
       for (const key of Reflect.ownKeys(globalThis)) {
         if (!baselineGlobals.has(key)) {
@@ -414,20 +414,26 @@ const runtimeHTML = `<!doctype html>
     if (factory) return {factory, delivery: 0, compile: 0};
     if (!sourceURL) throw new Error("compiled bundle cache miss for " + hash);
     const started = performance.now();
-    const script = document.createElement("script");
-    script.src = sourceURL;
-    try {
-      await new Promise((resolve, reject) => {
-        script.addEventListener("load", resolve, {once: true});
-        script.addEventListener("error", () => reject(new Error("load compiled bundle " + file)), {once: true});
-        document.head.append(script);
-      });
-    } finally {
-      script.remove();
+    if (globalThis.__rushLightpanda) {
+      const response = await fetch(sourceURL, {cache: "no-store"});
+      if (!response.ok) throw new Error("load compiled bundle " + file + ": HTTP " + response.status);
+      (0, eval)(await response.text());
+    } else {
+      const script = document.createElement("script");
+      script.src = sourceURL;
+      try {
+        await new Promise((resolve, reject) => {
+          script.addEventListener("load", resolve, {once: true});
+          script.addEventListener("error", () => reject(new Error("load compiled bundle " + file)), {once: true});
+          document.head.append(script);
+        });
+      } finally {
+        script.remove();
+      }
     }
     const total = performance.now() - started;
     const absoluteURL = new URL(sourceURL, location.href).href;
-    const resource = performance.getEntriesByName(absoluteURL).at(-1);
+    const resource = performance.getEntriesByName?.(absoluteURL)?.at(-1);
     const delivery = Math.min(total, resource?.duration || 0);
     const compile = Math.max(0, total - delivery);
     factory = compiledBundles.get(hash);
@@ -456,7 +462,7 @@ const runtimeHTML = `<!doctype html>
       const prepared = await bundleFactory(bundle.hash, bundle.source_url, bundle.file);
       delivery = prepared.delivery;
       compile = prepared.compile;
-      performance.clearResourceTimings();
+      performance.clearResourceTimings?.();
       collecting = true;
       prepared.factory();
       if (globalThis.__rushRegistration) await globalThis.__rushRegistration;
@@ -476,7 +482,7 @@ const runtimeHTML = `<!doctype html>
     }
     collecting = false;
     const total = performance.now() - suiteStart;
-    const coordinatorNetwork = nativeNetwork + performance.getEntriesByType("resource").reduce((sum, entry) => sum + entry.duration, 0);
+    const coordinatorNetwork = nativeNetwork + (performance.getEntriesByType?.("resource") || []).reduce((sum, entry) => sum + entry.duration, 0);
     const network = coordinatorNetwork + sessionTiming.network;
     const waits = intentionalWait + sessionTiming.wait;
     const coordinatorApplication = Math.max(0, callbackWall - sessionTiming.wall - intentionalWait - coordinatorNetwork);
