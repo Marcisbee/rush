@@ -61,6 +61,26 @@ This build requires a C compiler, `pkg-config`, `wpe-webkit-2.0`, and `wpe-platf
 
 WPE is headless-only and has no visible inspector path. It remains opt-in because the evaluated Ubuntu 26.04 package indexes did not provide WPE WebKit 2.x packages. See [the WPE evaluation](wpe-evaluation.md) for the measured decision.
 
+## Linux: Obscura no-render prototype
+
+The build-tagged Obscura adapter starts one `obscura serve` process per Rush
+browser realm and drives it over CDP. It is an evaluation path, not a supported
+replacement for Rush's browser engines. Download the Obscura 0.2.1 no-render
+binary separately, then build and run the prototype explicitly:
+
+```sh
+make build-obscura
+OBSCURA_BIN=/absolute/path/to/obscura \
+  RUSH_WEBVIEW_POOL_SIZE=2 \
+  ./bin/obscura/rush test examples/basic.test.ts
+```
+
+`OBSCURA_BIN` must name the executable, not its archive. The adapter enables
+Obscura's private-network access only for Rush's loopback harness and limits
+each process to one CDP connection. Headed debugging and trusted native input
+are unavailable. The no-render runtime currently fails browser conformance;
+see [the evaluation](obscura-evaluation.md) before using this path.
+
 ## macOS
 
 Rush requires macOS 13 or newer, Go 1.24 or newer, and the C/Objective-C compiler and macOS SDK supplied by Xcode Command Line Tools. It does not require the Swift compiler or runtime:

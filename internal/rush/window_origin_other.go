@@ -1,4 +1,4 @@
-//go:build (!linux && !darwin) || rush_wpe
+//go:build (!linux && !darwin) || rush_wpe || rush_obscura
 
 package rush
 

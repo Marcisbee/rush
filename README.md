@@ -11,6 +11,7 @@ Rush's browser API is published on npm as `rush-webtest`. Matching Linux and mac
 | Linux WebKitGTK runner | Browser, app, and isolated-session tests through `./bin/rush` in headless or headed mode |
 | Linux trusted input | X11/XTest mouse and keyboard input through the explicit native API |
 | Linux WPE runner | Opt-in headless browser runner; no headed debugging or trusted desktop input |
+| Linux Obscura prototype | Opt-in no-render CDP adapter; useful for compatibility evaluation but not browser-conformant |
 | macOS WKWebView runner | In-process Objective-C/cgo WKWebView adapter through `./bin/rush`, hidden or headed |
 | Windows WebView2 adapter | Go adapter and validation harness; not wired to the Go CLI |
 | Browser API | Vitest-like suites, assertions, mocks, fake timers, snapshots, Testing Library queries, and locators |
@@ -113,6 +114,7 @@ Vite-style image, font, and media imports are embedded as data URLs. Imported CS
 - [Publishing releases](docs/releasing.md)
 - [Windows WebView2 setup and validation](docs/windows-webview2.md)
 - [WPE WebKit evaluation](docs/wpe-evaluation.md)
+- [Obscura no-render evaluation](docs/obscura-evaluation.md)
 - [macOS WKWebView build and validation](docs/macos-wkwebview.md)
 
 ## Repository layout

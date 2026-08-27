@@ -8,10 +8,16 @@ This page describes the source tree at the revision containing it. Project proof
 | --- | --- | --- | --- | --- | --- |
 | Linux default | WebKitGTK 4.1 under Xvfb | Yes | Yes, with an existing display | X11/XTest through the explicit native API | Browser, app, and session CLI available |
 | Linux optional | WPE WebKit 2.52+ headless backend | Yes | No | No | Browser CLI available through `make build-wpe` |
+| Linux prototype | Obscura 0.2.1 no-render over CDP | No | No | No | Build-tagged browser CLI; fails Rush and Kodē browser conformance |
 | macOS 13+ | WKWebView | Hidden windows | Visible window and Web Inspector | Core Graphics with Accessibility permission | Browser, app, and session CLI available |
 | Windows | WebView2 | Hidden/off-screen host | Visible window and DevTools | `SendInput` on an interactive desktop | Go adapter and validation harness |
 
 A clean Linux server does not already include a browser runtime. Install the packages in [Installation and configuration](installation.md) or provide a complete WPE deployment.
+
+The Obscura build exists to make its compatibility boundary reproducible. Its
+no-render DOM does not currently preserve Rush's real-browser contract, so it
+must not replace the WebKitGTK or WPE paths. See the
+[Obscura evaluation](obscura-evaluation.md).
 
 ## Browser API coverage
 
