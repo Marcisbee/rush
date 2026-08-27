@@ -184,6 +184,12 @@ describe("browser API", () => {
     expect(document.body).not.toHaveClass();
     expect(button).toHaveStyle({ width: "170px", color: "#0c2238" });
     expect(button).toHaveStyle("width: 170px");
+
+    const statusIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    statusIcon.setAttribute("style", "color: var(--status-backlog);");
+    expect(statusIcon).toHaveStyle({ color: "var(--status-backlog)" });
+    expect(statusIcon).not.toHaveStyle({ color: "var(--status-done)" });
+
     expect(button).toHaveAccessibleName("Save changes");
     expect(button).toHaveAccessibleName(/save/i);
     expect(button).toHaveAccessibleName();

@@ -124,7 +124,11 @@ function hasStyles(value: unknown, expected: StyleExpectation): boolean {
   const view = value.ownerDocument.defaultView;
   if (!view) return false;
   const computed = view.getComputedStyle(value);
-  return Object.entries(styles).every(([property, expectedValue]) => computed.getPropertyValue(property) === expectedValue);
+  const inline = (value as Element & { readonly style?: CSSStyleDeclaration }).style;
+  return Object.entries(styles).every(([property, expectedValue]) =>
+    computed.getPropertyValue(property) === expectedValue
+      || (expectedValue.includes("var(") && inline?.getPropertyValue(property) === expectedValue),
+  );
 }
 
 const disableableTags = new Set(["fieldset", "input", "select", "optgroup", "option", "button", "textarea"]);
