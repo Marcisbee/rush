@@ -173,6 +173,7 @@ func runAcrossRealms(ctx context.Context, id string, bundles []BuiltSuite, realm
 	result := browserBatchResult{Suites: results}
 	for _, worker := range workerResults {
 		result.BrowserMS = max(result.BrowserMS, worker.BrowserMS)
+		result.DeliveryMS = max(result.DeliveryMS, worker.DeliveryMS)
 		result.ReportingMS = max(result.ReportingMS, worker.ReportingMS)
 	}
 	return result, nil

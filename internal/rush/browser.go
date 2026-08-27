@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,6 +31,7 @@ type Browser struct {
 	routes         map[string]chan AppHTTPResponse
 	compiled       map[string]bool
 	compileOrder   []string
+	bundleSources  *browserBundleSourceStore
 }
 
 const browserBundleCacheLimit = 64
@@ -36,7 +40,73 @@ type browserBatchResult struct {
 	Suites         []SuiteResult `json:"suites"`
 	CompiledHashes []string      `json:"compiled_hashes,omitempty"`
 	BrowserMS      float64       `json:"browser_ms"`
+	DeliveryMS     float64       `json:"delivery_ms"`
 	ReportingMS    float64       `json:"reporting_ms"`
+}
+
+type browserBundlePayload struct {
+	File      string `json:"file"`
+	Hash      string `json:"hash"`
+	SourceURL string `json:"source_url,omitempty"`
+}
+
+type browserBundleSourceStore struct {
+	mu      sync.RWMutex
+	batches map[string]map[int]browserBundleSource
+}
+
+func newBrowserBundleSourceStore() *browserBundleSourceStore {
+	return &browserBundleSourceStore{batches: make(map[string]map[int]browserBundleSource)}
+}
+
+type browserBundleSource struct {
+	hash   string
+	source string
+}
+
+func (s *browserBundleSourceStore) Put(id string, sources map[int]browserBundleSource) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.batches[id] = sources
+}
+
+func (s *browserBundleSourceStore) Delete(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.batches, id)
+}
+
+func (s *browserBundleSourceStore) ServeHTTP(response http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		response.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	parts := strings.Split(strings.TrimPrefix(request.URL.Path, "/__rush/bundle/"), "/")
+	if len(parts) != 2 {
+		http.NotFound(response, request)
+		return
+	}
+	id, err := url.PathUnescape(parts[0])
+	if err != nil {
+		http.NotFound(response, request)
+		return
+	}
+	index, err := strconv.Atoi(parts[1])
+	if err != nil {
+		http.NotFound(response, request)
+		return
+	}
+	s.mu.RLock()
+	bundle, ok := s.batches[id][index]
+	s.mu.RUnlock()
+	if !ok {
+		http.NotFound(response, request)
+		return
+	}
+	response.Header().Set("Cache-Control", "no-store")
+	response.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	hashJSON, _ := json.Marshal(bundle.hash)
+	_, _ = fmt.Fprintf(response, "window.__rush.installBundle(%s,function(){\n%s\n});\n", hashJSON, bundle.source)
 }
 
 type nativeInputCapability struct {
@@ -53,6 +123,7 @@ func NewBrowser(headed bool, sessionWarmCount ...int) (*Browser, error) {
 	}
 	origin := "http://" + listener.Addr().String()
 	proxy := newAppProxy(origin)
+	bundleSources := newBrowserBundleSourceStore()
 	mux := http.NewServeMux()
 	mux.HandleFunc(browserControllerPath, func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Cache-Control", "no-store")
@@ -70,6 +141,7 @@ func NewBrowser(headed bool, sessionWarmCount ...int) (*Browser, error) {
 		response.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = response.Write([]byte(`<!doctype html><html><body><main data-testid="client">session client</main></body></html>`))
 	})
+	mux.Handle("/__rush/bundle/", bundleSources)
 	mux.Handle("/", proxy)
 	harnessServer := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = harnessServer.Serve(listener) }()
@@ -95,6 +167,7 @@ func NewBrowser(headed bool, sessionWarmCount ...int) (*Browser, error) {
 		pending:        make(map[string]chan browserBatchResult),
 		routes:         make(map[string]chan AppHTTPResponse),
 		compiled:       make(map[string]bool),
+		bundleSources:  bundleSources,
 	}
 	proxy.decide = browser.decideRequest
 	proxy.complete = browser.networkComplete
@@ -206,13 +279,15 @@ func (b *Browser) RunBatch(ctx context.Context, id string, bundles []BuiltSuite)
 		known[hash] = true
 	}
 	order := append([]string(nil), b.compileOrder...)
-	payload := make([]BuiltSuite, len(bundles))
+	payload := make([]browserBundlePayload, len(bundles))
+	sources := make(map[int]browserBundleSource, len(bundles))
 	for index, bundle := range bundles {
-		payload[index] = bundle
+		payload[index] = browserBundlePayload{File: bundle.File, Hash: bundle.Hash}
 		if known[bundle.Hash] {
-			payload[index].Source = ""
 			continue
 		}
+		sources[index] = browserBundleSource{hash: bundle.Hash, source: bundle.Source}
+		payload[index].SourceURL = fmt.Sprintf("/__rush/bundle/%s/%d", url.PathEscape(id), index)
 		if len(order) >= browserBundleCacheLimit {
 			delete(known, order[0])
 			order = order[1:]
@@ -221,7 +296,9 @@ func (b *Browser) RunBatch(ctx context.Context, id string, bundles []BuiltSuite)
 		order = append(order, bundle.Hash)
 	}
 	b.mu.Unlock()
+	b.bundleSources.Put(id, sources)
 	defer func() {
+		b.bundleSources.Delete(id)
 		b.mu.Lock()
 		delete(b.pending, id)
 		b.mu.Unlock()
@@ -234,7 +311,7 @@ func (b *Browser) RunBatch(ctx context.Context, id string, bundles []BuiltSuite)
 
 	select {
 	case batch := <-result:
-		b.rememberCompiled(payload, batch.CompiledHashes)
+		b.rememberCompiled(bundles, batch.CompiledHashes)
 		return batch, nil
 	case <-ctx.Done():
 		return browserBatchResult{}, ctx.Err()

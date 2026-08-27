@@ -9,9 +9,10 @@ import (
 )
 
 type fakeBrowserRealm struct {
-	batches [][]BuiltSuite
-	err     error
-	stops   int
+	batches    [][]BuiltSuite
+	err        error
+	stops      int
+	deliveryMS float64
 }
 
 func (f *fakeBrowserRealm) Ready() <-chan struct{} {
@@ -31,7 +32,7 @@ func (f *fakeBrowserRealm) RunBatch(_ context.Context, _ string, bundles []Built
 	for index, bundle := range bundles {
 		suites[index].File = bundle.File
 	}
-	return browserBatchResult{Suites: suites}, nil
+	return browserBatchResult{Suites: suites, DeliveryMS: f.deliveryMS}, nil
 }
 
 func TestConfiguredBrowserPoolSizeIsBounded(t *testing.T) {
@@ -66,7 +67,11 @@ func TestSessionWarmCountsFollowSuiteRealmAssignments(t *testing.T) {
 }
 
 func TestRunAcrossRealmsKeepsStableAssignmentsAndResultOrder(t *testing.T) {
-	realms := []browserRealm{&fakeBrowserRealm{}, &fakeBrowserRealm{}, &fakeBrowserRealm{}}
+	realms := []browserRealm{
+		&fakeBrowserRealm{deliveryMS: 4},
+		&fakeBrowserRealm{deliveryMS: 9},
+		&fakeBrowserRealm{deliveryMS: 6},
+	}
 	bundles := make([]BuiltSuite, 7)
 	for index := range bundles {
 		bundles[index].File = string(rune('a' + index))
@@ -81,6 +86,9 @@ func TestRunAcrossRealmsKeepsStableAssignmentsAndResultOrder(t *testing.T) {
 	}
 	if !reflect.DeepEqual(files, []string{"a", "b", "c", "d", "e", "f", "g"}) {
 		t.Fatalf("result order = %v", files)
+	}
+	if result.DeliveryMS != 9 {
+		t.Fatalf("delivery time = %f, want 9", result.DeliveryMS)
 	}
 	wantAssignments := [][]string{{"a", "d", "g"}, {"b", "e"}, {"c", "f"}}
 	for index, realm := range realms {
