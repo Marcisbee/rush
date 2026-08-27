@@ -147,13 +147,27 @@ func startUnixVirtualDisplay(xvfb string) (func(), error) {
 	if err != nil {
 		return nil, errors.New("headless mode requires xauth to protect the Xvfb display")
 	}
+	lockDirectory, err := virtualDisplayLockDirectory()
+	if err != nil {
+		return nil, fmt.Errorf("prepare Xvfb display locks: %w", err)
+	}
+	var lastErr error
 	for display := 90; display < 190; display++ {
+		releaseDisplay, claimed, err := claimVirtualDisplay(lockDirectory, display)
+		if err != nil {
+			return nil, fmt.Errorf("claim Xvfb display %d: %w", display, err)
+		}
+		if !claimed {
+			continue
+		}
 		socket := filepath.Join("/tmp/.X11-unix", "X"+strconv.Itoa(display))
 		if _, err := os.Stat(socket); err == nil {
+			releaseDisplay()
 			continue
 		}
 		authPath, err := createXAuthority(xauth, display)
 		if err != nil {
+			releaseDisplay()
 			return nil, err
 		}
 		command := exec.Command(xvfb, ":"+strconv.Itoa(display), "-nolisten", "tcp", "-auth", authPath, "-screen", "0", "1280x800x24")
@@ -161,46 +175,62 @@ func startUnixVirtualDisplay(xvfb string) (func(), error) {
 		command.Stderr = os.Stderr
 		if err := command.Start(); err != nil {
 			_ = os.Remove(authPath)
+			releaseDisplay()
 			return nil, fmt.Errorf("start Xvfb: %w", err)
 		}
 		exited := make(chan error, 1)
 		go func() { exited <- command.Wait() }()
+		stop := func() {
+			_ = command.Process.Kill()
+			<-exited
+			_ = os.Remove(authPath)
+			releaseDisplay()
+		}
 		deadline := time.Now().Add(5 * time.Second)
 		for time.Now().Before(deadline) {
 			select {
 			case processErr := <-exited:
 				_ = os.Remove(authPath)
-				return nil, fmt.Errorf("Xvfb exited before allocating display %d: %w", display, processErr)
+				releaseDisplay()
+				lastErr = fmt.Errorf("Xvfb exited before allocating display %d: %w", display, processErr)
+				goto nextUnixDisplay
 			default:
 			}
 			connection, dialErr := net.DialTimeout("unix", socket, 50*time.Millisecond)
 			if dialErr == nil {
 				connection.Close()
 				if err := os.Setenv("DISPLAY", ":"+strconv.Itoa(display)); err != nil {
-					_ = command.Process.Kill()
-					<-exited
-					_ = os.Remove(authPath)
+					stop()
 					return nil, err
 				}
 				if err := os.Setenv("XAUTHORITY", authPath); err != nil {
-					_ = command.Process.Kill()
-					<-exited
-					_ = os.Remove(authPath)
+					stop()
 					return nil, err
 				}
-				return func() {
-					_ = command.Process.Kill()
-					<-exited
-					_ = os.Remove(authPath)
-				}, nil
+				return stop, nil
 			}
 			time.Sleep(25 * time.Millisecond)
 		}
-		_ = command.Process.Kill()
-		<-exited
-		_ = os.Remove(authPath)
+		stop()
+		lastErr = fmt.Errorf("Xvfb did not allocate display %d within 5s", display)
+	nextUnixDisplay:
+	}
+	if lastErr != nil {
+		return nil, fmt.Errorf("Xvfb could not allocate a Unix display: %w", lastErr)
 	}
 	return nil, errors.New("Xvfb could not allocate a Unix display")
+}
+
+func virtualDisplayLockDirectory() (string, error) {
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+	directory := filepath.Join(cache, "rush", "display-locks")
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		return "", err
+	}
+	return directory, nil
 }
 
 func createXAuthority(xauth string, display int) (string, error) {
@@ -231,63 +261,80 @@ func startTCPVirtualDisplay(xvfb string) (func(), error) {
 	if err != nil {
 		return nil, errors.New("/tmp/.X11-unix is not usable and the authenticated TCP fallback requires xauth")
 	}
-	var authPath string
-	fail := func(err error) (func(), error) {
-		_ = os.Remove(authPath)
-		return nil, err
+	lockDirectory, err := virtualDisplayLockDirectory()
+	if err != nil {
+		return nil, fmt.Errorf("prepare Xvfb display locks: %w", err)
 	}
-
+	var lastErr error
 	for display := 90; display < 190; display++ {
+		releaseDisplay, claimed, err := claimVirtualDisplay(lockDirectory, display)
+		if err != nil {
+			return nil, fmt.Errorf("claim Xvfb display %d: %w", display, err)
+		}
+		if !claimed {
+			continue
+		}
 		port := 6000 + display
 		probe, listenErr := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
 		if listenErr != nil {
+			releaseDisplay()
 			continue
 		}
 		probe.Close()
-		authPath, err = createXAuthority(xauth, display)
+		authPath, err := createXAuthority(xauth, display)
 		if err != nil {
-			return fail(err)
+			releaseDisplay()
+			return nil, err
 		}
 		command := exec.Command(xvfb, ":"+strconv.Itoa(display), "-nolisten", "unix", "-listen", "tcp", "-auth", authPath, "-screen", "0", "1280x800x24")
 		command.Stdout = os.Stdout
 		command.Stderr = os.Stderr
 		if err := command.Start(); err != nil {
-			return fail(fmt.Errorf("start Xvfb: %w", err))
+			_ = os.Remove(authPath)
+			releaseDisplay()
+			return nil, fmt.Errorf("start Xvfb: %w", err)
 		}
 		exited := make(chan error, 1)
 		go func() { exited <- command.Wait() }()
+		stop := func() {
+			_ = command.Process.Kill()
+			<-exited
+			_ = os.Remove(authPath)
+			releaseDisplay()
+		}
 		deadline := time.Now().Add(5 * time.Second)
 		for time.Now().Before(deadline) {
 			select {
 			case processErr := <-exited:
-				return fail(fmt.Errorf("Xvfb exited before allocating display %d: %w", display, processErr))
+				_ = os.Remove(authPath)
+				releaseDisplay()
+				lastErr = fmt.Errorf("Xvfb exited before allocating display %d: %w", display, processErr)
+				goto nextTCPDisplay
 			default:
 			}
 			connection, dialErr := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), 50*time.Millisecond)
 			if dialErr == nil {
 				connection.Close()
 				if err := os.Setenv("DISPLAY", "localhost:"+strconv.Itoa(display)); err != nil {
-					_ = command.Process.Kill()
-					<-exited
-					return fail(err)
+					stop()
+					return nil, err
 				}
 				if err := os.Setenv("XAUTHORITY", authPath); err != nil {
-					_ = command.Process.Kill()
-					<-exited
-					return fail(err)
+					stop()
+					return nil, err
 				}
-				return func() {
-					_ = command.Process.Kill()
-					<-exited
-					_ = os.Remove(authPath)
-				}, nil
+				return stop, nil
 			}
 			time.Sleep(25 * time.Millisecond)
 		}
-		_ = command.Process.Kill()
-		<-exited
+		stop()
+		lastErr = fmt.Errorf("Xvfb did not allocate display %d within 5s", display)
+	nextTCPDisplay:
 	}
-	return fail(errors.New("Xvfb could not allocate a loopback display"))
+	if lastErr != nil {
+		return nil, fmt.Errorf("Xvfb could not allocate a loopback display: %w", lastErr)
+	}
+	return nil, errors.New("Xvfb could not allocate a loopback display")
 }
 
 func (s *Server) handle(connection net.Conn) {
