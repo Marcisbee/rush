@@ -423,6 +423,7 @@ func (s *Server) run(request Request) Response {
 		response.Profile.ResetMS += batch.Suites[index].Timing.ResetMS
 	}
 	response.Profile.BrowserExecutionMS = batch.BrowserMS
+	response.Profile.BundleDeliveryMS = batch.DeliveryMS
 	response.Profile.ReportingMS = batch.ReportingMS
 	response.Profile.BridgeMS = max(0, browserRoundtripMS-batch.BrowserMS-batch.ReportingMS)
 	response.Suites = batch.Suites

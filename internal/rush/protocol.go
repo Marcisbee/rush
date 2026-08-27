@@ -14,6 +14,7 @@ type Request struct {
 
 type Timing struct {
 	BuildMS       float64 `json:"build_ms"`
+	DeliveryMS    float64 `json:"delivery_ms,omitempty"`
 	CompileMS     float64 `json:"compile_ms,omitempty"`
 	ResetMS       float64 `json:"reset_ms,omitempty"`
 	RunnerMS      float64 `json:"runner_ms"`
@@ -26,6 +27,7 @@ type Timing struct {
 type Profile struct {
 	BrowserRealms      int     `json:"browser_realms"`
 	BundleMS           float64 `json:"bundle_ms"`
+	BundleDeliveryMS   float64 `json:"bundle_delivery_ms"`
 	NativeHostMS       float64 `json:"native_host_ms"`
 	BridgeMS           float64 `json:"bridge_ms"`
 	BrowserExecutionMS float64 `json:"browser_execution_ms"`

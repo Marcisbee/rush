@@ -402,17 +402,37 @@ const runtimeHTML = `<!doctype html>
     });
   }
 
-  function bundleFactory(hash, source, file) {
-    let factory = compiledBundles.get(hash);
-    if (factory) return factory;
-    if (!source) throw new Error("compiled bundle cache miss for " + hash);
-    const sourceURL = "rush-test://suite/" + encodeURIComponent(file).replaceAll("%2F", "/");
-    factory = new Function("//# sourceURL=" + sourceURL + "\n" + source);
+  function installBundle(hash, factory) {
     if (compiledBundles.size >= bundleCacheLimit) {
       compiledBundles.delete(compiledBundles.keys().next().value);
     }
     compiledBundles.set(hash, factory);
-    return factory;
+  }
+
+  async function bundleFactory(hash, sourceURL, file) {
+    let factory = compiledBundles.get(hash);
+    if (factory) return {factory, delivery: 0, compile: 0};
+    if (!sourceURL) throw new Error("compiled bundle cache miss for " + hash);
+    const started = performance.now();
+    const script = document.createElement("script");
+    script.src = sourceURL;
+    try {
+      await new Promise((resolve, reject) => {
+        script.addEventListener("load", resolve, {once: true});
+        script.addEventListener("error", () => reject(new Error("load compiled bundle " + file)), {once: true});
+        document.head.append(script);
+      });
+    } finally {
+      script.remove();
+    }
+    const total = performance.now() - started;
+    const absoluteURL = new URL(sourceURL, location.href).href;
+    const resource = performance.getEntriesByName(absoluteURL).at(-1);
+    const delivery = Math.min(total, resource?.duration || 0);
+    const compile = Math.max(0, total - delivery);
+    factory = compiledBundles.get(hash);
+    if (!factory) throw new Error("compiled bundle did not register " + file);
+    return {factory, delivery, compile};
   }
 
   async function executeSuite(bundle) {
@@ -422,8 +442,9 @@ const runtimeHTML = `<!doctype html>
     const suiteStart = performance.now();
     let results = [];
     let callbackWall = 0;
+    let delivery = 0;
     let compile = 0;
-    collecting = true;
+    collecting = false;
     try {
       const sharedAPI = globalThis.__rushBrowserRuntime;
       if (!sharedAPI || typeof sharedAPI.run !== "function") {
@@ -432,10 +453,12 @@ const runtimeHTML = `<!doctype html>
       sharedAPI.resetRegistry();
       sharedAPI.resetMockRuntime();
       sharedAPI.configureSnapshots();
-      const compileStart = performance.now();
-      const factory = bundleFactory(bundle.hash, bundle.source, bundle.file);
-      compile = performance.now() - compileStart;
-      factory();
+      const prepared = await bundleFactory(bundle.hash, bundle.source_url, bundle.file);
+      delivery = prepared.delivery;
+      compile = prepared.compile;
+      performance.clearResourceTimings();
+      collecting = true;
+      prepared.factory();
       if (globalThis.__rushRegistration) await globalThis.__rushRegistration;
       const api = globalThis.__rushBrowserModule || sharedAPI;
       api.configureRuntime({createApp: createAppRealm, createSession});
@@ -458,12 +481,13 @@ const runtimeHTML = `<!doctype html>
     const waits = intentionalWait + sessionTiming.wait;
     const coordinatorApplication = Math.max(0, callbackWall - sessionTiming.wall - intentionalWait - coordinatorNetwork);
     const application = coordinatorApplication + sessionTiming.application;
-    const runner = Math.max(0, total - callbackWall) + sessionTiming.runner;
+    const runner = Math.max(0, total - callbackWall - delivery) + sessionTiming.runner;
     return {
       file: bundle.file,
       tests: results,
       timing: {
         build_ms: 0,
+        delivery_ms: delivery,
         compile_ms: compile,
         reset_ms: reset,
         runner_ms: runner,
@@ -480,22 +504,26 @@ const runtimeHTML = `<!doctype html>
     const suites = [];
     for (const bundle of bundles) suites.push(await executeSuite(bundle));
     const browserMS = performance.now() - batchStart;
+    const deliveryMS = suites.reduce((sum, suite) => sum + (suite.timing.delivery_ms || 0), 0);
     const compiledHashes = bundles.filter(bundle => compiledBundles.has(bundle.hash)).map(bundle => bundle.hash);
     const reportingStart = performance.now();
     const suitesJSON = JSON.stringify(suites);
     const reporting = performance.now() - reportingStart;
-    await window.__rushReport('{"id":' + JSON.stringify(id) + ',"suites":' + suitesJSON + ',"compiled_hashes":' + JSON.stringify(compiledHashes) + ',"browser_ms":' + browserMS + ',"reporting_ms":' + reporting + '}');
+    await window.__rushReport('{"id":' + JSON.stringify(id) + ',"suites":' + suitesJSON + ',"compiled_hashes":' + JSON.stringify(compiledHashes) + ',"browser_ms":' + browserMS + ',"delivery_ms":' + deliveryMS + ',"reporting_ms":' + reporting + '}');
   }
 
   async function execute(id, filename, source) {
-    await executeBatch(id, [{file: filename, source, hash: "legacy-" + source.length}]);
+    const hash = "legacy-" + source.length;
+    const sourceName = "rush-test://suite/" + encodeURIComponent(filename).replaceAll("%2F", "/");
+    installBundle(hash, new Function("//# sourceURL=" + sourceName + "\n" + source));
+    await executeBatch(id, [{file: filename, hash}]);
   }
 
   function networkComplete(_realm, duration) {
     if (collecting) nativeNetwork += Math.max(0, Number(duration) || 0);
   }
 
-  window.__rush = {execute, executeBatch, handleRequest, networkComplete};
+  window.__rush = {execute, executeBatch, handleRequest, installBundle, networkComplete};
   baselineGlobals = new Set(Reflect.ownKeys(globalThis));
   window.__rushReady();
 })();

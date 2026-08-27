@@ -1,6 +1,7 @@
 package rush
 
 import (
+	"encoding/base64"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -370,6 +371,34 @@ func TestBuilderKeepsSharedBrowserRuntimeOutOfSuiteBundles(t *testing.T) {
 	}
 	if strings.Contains(bundle, "TestingLibraryElementError") {
 		t.Fatal("suite bundle contains Testing Library implementation")
+	}
+}
+
+func TestBuilderOmitsEmbeddedSourcesFromInlineSourceMaps(t *testing.T) {
+	t.Setenv("RUSH_BROWSER_MODULE", "")
+	directory := t.TempDir()
+	suite := filepath.Join(directory, "source-map.test.ts")
+	if err := os.WriteFile(suite, []byte("import { test } from 'rush-webtest'; test('mapped', () => {})"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	builder := NewBuilder()
+	defer builder.Close()
+	bundle, _, err := builder.Build(directory, suite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const marker = "//# sourceMappingURL=data:application/json;base64,"
+	markerIndex := strings.LastIndex(bundle, marker)
+	if markerIndex < 0 {
+		t.Fatal("bundle does not contain an inline source map")
+	}
+	encoded := strings.TrimPrefix(bundle[markerIndex:], marker)
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(encoded))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(decoded), `"sourcesContent"`) {
+		t.Fatal("inline source map duplicates consumer source content")
 	}
 }
 
