@@ -124,7 +124,11 @@ function hasStyles(value: unknown, expected: StyleExpectation): boolean {
   const view = value.ownerDocument.defaultView;
   if (!view) return false;
   const computed = view.getComputedStyle(value);
-  return Object.entries(styles).every(([property, expectedValue]) => computed.getPropertyValue(property) === expectedValue);
+  const inline = (value as Element & { readonly style?: CSSStyleDeclaration }).style;
+  return Object.entries(styles).every(([property, expectedValue]) =>
+    computed.getPropertyValue(property) === expectedValue
+      || (expectedValue.includes("var(") && inline?.getPropertyValue(property) === expectedValue),
+  );
 }
 
 const disableableTags = new Set(["fieldset", "input", "select", "optgroup", "option", "button", "textarea"]);
@@ -287,7 +291,7 @@ class Expectation {
     return this.apply("to have text content", (value) => isNode(value) && (expected instanceof RegExp ? expected.test(value.textContent ?? "") : (value.textContent ?? "").includes(String(expected))), expected);
   }
   toHaveAttribute(name: string, expected?: unknown): MatcherResult {
-    return this.apply("to have attribute", (value) => isElement(value) && value.hasAttribute(name) && (arguments.length < 2 || value.getAttribute(name) === String(expected)), name);
+    return this.apply("to have attribute", (value) => isElement(value) && value.hasAttribute(name) && (arguments.length < 2 || equals(value.getAttribute(name), expected)), name);
   }
   toHaveClass(...values: Array<ClassExpectation | { exact: boolean }>): MatcherResult {
     const maybeOptions = values.at(-1);
