@@ -130,6 +130,15 @@ export function spyOn<T extends object, K extends keyof T>(target: T, property: 
     return spy;
   }
 
+  if (descriptor.get) {
+    const implementation = Reflect.get(target, property) as unknown;
+    if (typeof implementation !== "function") throw new Error(`${String(property)} is not a function`);
+    const spy = fn(implementation as (...args: unknown[]) => unknown);
+    (spy as unknown as { __setRestore(callback: () => void): void }).__setRestore(restore);
+    Object.defineProperty(target, property, { ...descriptor, get: () => spy });
+    return spy;
+  }
+
   if (typeof descriptor.value !== "function") throw new Error(`${String(property)} is not a function`);
   const spy = fn(descriptor.value as (...args: unknown[]) => unknown);
   (spy as unknown as { __setRestore(callback: () => void): void }).__setRestore(restore);
