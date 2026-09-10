@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/Marcisbee/rush/result"
@@ -71,7 +72,7 @@ func WriteAll(summary result.Summary, outputs []Output, stdout io.Writer) (time.
 }
 
 func createFile(path string) (*os.File, error) {
-	directory := filepathDir(path)
+	directory := filepath.Dir(path)
 	if directory != "." {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			return nil, fmt.Errorf("create report directory: %w", err)

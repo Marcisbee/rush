@@ -46,7 +46,6 @@ let callOrder = 0;
 
 export function fn<TArgs extends unknown[] = unknown[], TReturn = unknown>(implementation?: (...args: TArgs) => TReturn): MockFunction<TArgs, TReturn> {
   let currentImplementation = implementation;
-  const initialImplementation = implementation;
   const once: Array<(...args: TArgs) => TReturn> = [];
   let name = "vi.fn()";
   let restore: (() => void) | undefined;
@@ -102,7 +101,6 @@ export function fn<TArgs extends unknown[] = unknown[], TReturn = unknown>(imple
   Object.defineProperty(callable, "__setRestore", {
     value: (callback: () => void) => { restore = callback; },
   });
-  Object.defineProperty(callable, "__initialImplementation", { value: initialImplementation });
   return callable;
 }
 

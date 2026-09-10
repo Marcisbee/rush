@@ -69,7 +69,7 @@ export class Locator {
     return new Locator(() => this.resolve().flatMap((root) => [...root.querySelectorAll(selector)]), `${this.description}.locator(${JSON.stringify(selector)})`);
   }
 
-  getByRole(role: ByRoleOptions extends never ? never : Parameters<typeof queries.queryAllByRole>[1], options?: ByRoleOptions): Locator {
+  getByRole(role: Parameters<typeof queries.queryAllByRole>[1], options?: ByRoleOptions): Locator {
     return new Locator(() => this.queryAll((root) => queries.queryAllByRole(root, role, options)), `${this.description}.getByRole(${JSON.stringify(role)})`);
   }
 

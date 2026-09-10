@@ -29,11 +29,7 @@ type hoistedDeclaration struct {
 // builder seam. Static imports are delayed until top-level vi.mock registrations
 // exist. The builder wraps the complete output in the registration promise that
 // the WebKit harness awaits.
-func transformHoistedMocks(source string) (string, error) {
-	return transformHoistedMocksWithIDs(source, nil)
-}
-
-func transformHoistedMocksWithIDs(source string, resolvedIDs map[string]string) (string, error) {
+func transformHoistedMocks(source string, resolvedIDs map[string]string) (string, error) {
 	mocks, err := findMockCalls(source)
 	if err != nil || len(mocks) == 0 {
 		return source, err
@@ -82,7 +78,7 @@ func transformHoistedMocksWithIDs(source string, resolvedIDs map[string]string) 
 		if rewriteErr != nil {
 			return "", rewriteErr
 		}
-		sourceID, sourceErr := mockModuleID(arguments)
+		sourceID, sourceErr := quotedImportSource(arguments)
 		if sourceErr != nil {
 			return "", sourceErr
 		}
@@ -460,14 +456,6 @@ func findImportEnd(source string, start int) (int, error) {
 	return len(source), nil
 }
 
-func rewriteStaticImport(statement string) (string, error) {
-	sourceID, err := staticImportSource(statement)
-	if err != nil {
-		return "", err
-	}
-	return rewriteStaticImportWithID(statement, sourceID)
-}
-
 func rewriteStaticImportWithID(statement, runtimeID string) (string, error) {
 	trimmed := strings.TrimSpace(strings.TrimSuffix(statement, ";"))
 	if strings.HasPrefix(trimmed, "import type ") {
@@ -546,10 +534,6 @@ func staticImportSource(statement string) (string, error) {
 		return "", fmt.Errorf("unsupported static import while hoisting mocks: %s", strings.TrimSpace(statement))
 	}
 	return quotedImportSource(strings.TrimSpace(trimmed[from+len(" from "):]))
-}
-
-func mockModuleID(arguments string) (string, error) {
-	return quotedImportSource(strings.TrimSpace(arguments))
 }
 
 func replaceFirstStringArgument(arguments, id string) (string, error) {

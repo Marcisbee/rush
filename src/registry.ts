@@ -26,7 +26,6 @@ interface TestDefinition {
   model: TestModel;
   callback?: TestCallback;
   sessionOptions?: SessionOptions;
-  parent: SuiteDefinition;
 }
 
 interface SuiteDefinition {
@@ -34,7 +33,6 @@ interface SuiteDefinition {
   id: string;
   name: string;
   mode: Exclude<TestMode, "todo">;
-  parent?: SuiteDefinition;
   entries: Array<SuiteDefinition | TestDefinition>;
   hooks: {
     beforeAll: HookCallback[];
@@ -91,7 +89,6 @@ function registerTest(mode: TestMode, model: TestModel, sessionOptions: SessionO
     name,
     mode: callback ? mode : "todo",
     model,
-    parent: currentSuite,
   };
   if (callback) definition.callback = callback;
   if (sessionOptions) definition.sessionOptions = sessionOptions;
@@ -135,7 +132,6 @@ function makeDescribe(mode: Exclude<TestMode, "todo"> = "run"): DescribeAPI {
       id: `suite-${++sequence}`,
       name,
       mode,
-      parent,
       entries: [],
       hooks: { beforeAll: [], afterAll: [], beforeEach: [], afterEach: [] },
     };

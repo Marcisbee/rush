@@ -11,7 +11,7 @@ import { read as readValue } from "./service.js";
 vi.mock("./service.js", () => ({ read: () => "mocked" }));
 test("mocked", () => readValue());`
 
-	transformed, err := transformHoistedMocks(source)
+	transformed, err := transformHoistedMocks(source, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ test("mocked", () => readValue());`
 
 func TestTransformHoistedMocksLeavesOrdinarySuiteUntouched(t *testing.T) {
 	source := `import { test } from "rush-webtest"; test("plain", () => {});`
-	transformed, err := transformHoistedMocks(source)
+	transformed, err := transformHoistedMocks(source, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ const { state } = vi.hoisted(() => ({ state: { read: vi.fn(() => "mocked") } }))
 vi.mock("./service.js", () => state);
 test("mocked", () => read());`
 
-	transformed, err := transformHoistedMocks(source)
+	transformed, err := transformHoistedMocks(source, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ vi.mock("./avatarCrop", async () => {
 });
 test("mocked", () => crop());`
 
-	transformed, err := transformHoistedMocks(source)
+	transformed, err := transformHoistedMocks(source, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

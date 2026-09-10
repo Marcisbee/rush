@@ -177,7 +177,7 @@ func (b *Builder) BuildBatch(cwd string, names []string) ([]BuiltSuite, float64,
 						}
 						resolved := make(map[string]string, len(mocks))
 						for _, mock := range mocks {
-							sourceID, sourceErr := mockModuleID(mock.arguments)
+							sourceID, sourceErr := quotedImportSource(mock.arguments)
 							if sourceErr != nil {
 								return api.OnStartResult{}, sourceErr
 							}
@@ -219,7 +219,7 @@ func (b *Builder) BuildBatch(cwd string, names []string) ([]BuiltSuite, float64,
 					transformed := original
 					var transformErr error
 					if hoistedFiles[cleanPath] {
-						transformed, transformErr = transformHoistedMocksWithIDs(original, entryMocks)
+						transformed, transformErr = transformHoistedMocks(original, entryMocks)
 					} else if len(targets) > 0 {
 						imports, findErr := findStaticImports(original)
 						if findErr != nil {

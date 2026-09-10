@@ -39,7 +39,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	case "bench":
 		return runBenchmarks(args[1:], stdout)
 	case "doctor":
-		return doctor(stdout)
+		return rush.Doctor(stdout)
 	case "__host":
 		return nativeHost(args[1:])
 	case "__session-worker":
@@ -118,17 +118,6 @@ func (values *buildFlagValues) register(set *flag.FlagSet) {
 
 func (values *buildFlagValues) options() rush.BuilderOptions {
 	return rush.BuilderOptions{Aliases: values.aliases.values, Loaders: values.loaders.values}
-}
-
-func parseBuildFlags(args []string) (rush.BuilderOptions, []string, error) {
-	set := flag.NewFlagSet("rush build options", flag.ContinueOnError)
-	set.SetOutput(io.Discard)
-	values := newBuildFlagValues()
-	values.register(set)
-	if err := set.Parse(args); err != nil {
-		return rush.BuilderOptions{}, nil, err
-	}
-	return values.options(), set.Args(), nil
 }
 
 func runTests(args []string, stdout, stderr io.Writer) (runErr error) {
@@ -358,10 +347,6 @@ func parseSessionDemands(value string) ([]int, error) {
 		demands[index] = demand
 	}
 	return demands, nil
-}
-
-func doctor(output io.Writer) error {
-	return rush.Doctor(output)
 }
 
 func failedTests(response rush.Response) int {

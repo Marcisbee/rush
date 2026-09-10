@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -16,26 +18,22 @@ import (
 )
 
 func TestJSONReporterReturnsFailureAfterWritingDiagnostics(t *testing.T) {
-	for _, testName := range []string{"reports failures", "suite registration"} {
-		t.Run(testName, func(t *testing.T) {
-			response := rush.Response{Suites: []rush.SuiteResult{{
-				File:  "broken.test.ts",
-				Tests: []rush.TestResult{{Name: testName, Status: "failed", Error: "intentional failure"}},
-			}}}
-			var output bytes.Buffer
+	response := rush.Response{Suites: []rush.SuiteResult{{
+		File:  "broken.test.ts",
+		Tests: []rush.TestResult{{Name: "suite registration", Status: "failed", Error: "intentional failure"}},
+	}}}
+	var output bytes.Buffer
 
-			err := writeJSONResponse(&output, response)
-			if !errors.Is(err, errTestsFailed) {
-				t.Fatalf("reporter error = %v; want test failure sentinel", err)
-			}
-			var decoded rush.Response
-			if err := json.Unmarshal(output.Bytes(), &decoded); err != nil {
-				t.Fatalf("decode JSON diagnostics: %v\noutput: %s", err, output.String())
-			}
-			if !reflect.DeepEqual(decoded, response) {
-				t.Fatalf("decoded response = %#v; want %#v", decoded, response)
-			}
-		})
+	err := writeJSONResponse(&output, response)
+	if !errors.Is(err, errTestsFailed) {
+		t.Fatalf("reporter error = %v; want test failure sentinel", err)
+	}
+	var decoded rush.Response
+	if err := json.Unmarshal(output.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode JSON diagnostics: %v\noutput: %s", err, output.String())
+	}
+	if !reflect.DeepEqual(decoded, response) {
+		t.Fatalf("decoded response = %#v; want %#v", decoded, response)
 	}
 }
 
@@ -192,7 +190,10 @@ func TestWaitForFileChangeStopsWithContext(t *testing.T) {
 }
 
 func TestBuildFlagsAcceptAliasesAndLoaders(t *testing.T) {
-	options, files, err := parseBuildFlags([]string{
+	set := flag.NewFlagSet("test", flag.ContinueOnError)
+	values := newBuildFlagValues()
+	values.register(set)
+	err := set.Parse([]string{
 		"--alias=virtual:pwa-register=./test/pwa-stub.ts",
 		"--loader=.svg=text",
 		"suite.test.ts",
@@ -200,6 +201,8 @@ func TestBuildFlagsAcceptAliasesAndLoaders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	options := values.options()
+	files := set.Args()
 	if options.Aliases["virtual:pwa-register"] != "./test/pwa-stub.ts" {
 		t.Fatalf("aliases = %#v", options.Aliases)
 	}
@@ -212,7 +215,7 @@ func TestBuildFlagsAcceptAliasesAndLoaders(t *testing.T) {
 }
 
 func TestBuildFlagsRejectUnsupportedLoader(t *testing.T) {
-	if _, _, err := parseBuildFlags([]string{"--loader=.svg=file", "suite.test.ts"}); err == nil {
-		t.Fatal("file loader was accepted even though emitted assets cannot be served")
+	if err := runTests([]string{"--loader=.svg=file", "suite.test.ts"}, io.Discard, io.Discard); err == nil || !strings.Contains(err.Error(), "unsupported loader") {
+		t.Fatalf("expected unsupported loader error, got %v", err)
 	}
 }
